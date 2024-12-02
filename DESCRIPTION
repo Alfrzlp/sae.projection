@@ -18,6 +18,7 @@ BugReports: https://github.com/Alfrzlp/sae.projection/issues
 Imports: 
     cli,
     dplyr,
+    glmnet,
     methods,
     MKclass,
     rlang,
