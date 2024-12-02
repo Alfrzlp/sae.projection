@@ -1,0 +1,79 @@
+---
+output: github_document
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# sae.projection
+
+<!-- badges: start -->
+
+[![CRAN status](https://www.r-pkg.org/badges/version/sae.projection)](https://CRAN.R-project.org/package=sae.projection) [![R-CMD-check](https://github.com/Alfrzlp/sae.projection/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Alfrzlp/sae.projection/actions/workflows/R-CMD-check.yaml)
+
+<!-- badges: end -->
+
+## Author
+
+Azka Ubaidillah, Ridson Al Farizal P
+
+## Maintainer
+
+Ridson Al Farizal P [ridsonap\@bps.go.id](mailto:ridsonap@bps.go.id)
+
+## Description
+
+The goal of **sae.projection** is to provide tools for performing **Small Area Estimation (SAE)** using projection-based methods. This approach is particularly effective for generating reliable domain-level estimates in situations where sample sizes are too small for direct estimation. By utilizing auxiliary information and statistical models, the package improves the precision and accuracy of small area estimates.
+
+## Installation
+
+You can install the development version of sae.projection from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("Alfrzlp/sae.projection")
+```
+
+## Example
+
+This is a basic example which shows you how to solve a common problem:
+
+```{r example}
+library(sae.projection)
+library(dplyr)
+```
+
+### Logistic Model
+
+```{r example1}
+df_res <- projection_estimator(
+   formula = unemployment ~ edu + sex + age + head,
+   domain = c('prov', 'regency'),
+   weight = 'weight',
+   data_model = df_svy2,
+   data_proj = df_svy1,
+   model = 'logistic',
+   cutoff = 'optimum'
+)
+```
+
+### Linear Model
+
+```{r example2}
+df_svy2_new <- df_svy2 %>% dplyr::filter(!is.na(income))
+
+m2 <- projection_estimator(
+  formula = income ~ edu + sex + age + head,
+  domain = c('prov', 'regency'),
+  weight = 'weight',
+  data_model = df_svy2_new,
+  data_proj = df_svy1,
+  model = 'linear'
+)
+```
