@@ -1,39 +1,41 @@
-#' @title df_svy1: The August 2023 National Labor Force Survey dataset in Java Island, Indonesia.
-#' @description A dataset containing several auxiliary variable in Java Island, Indonesia in 2023.
+#' @title df_svy22: The August 2022 National Labor Force Survey dataset in East Java, Indonesia.
+#' @description A dataset containing several auxiliary variable in East Java, Indonesia in 2023.
 #' @format
-#' A data frame with 131.073 rows and 9 variables with 119 domains.
+#' A data frame with 74.070 rows and 11 variables with 38 domains.
 #'
 #' \describe{
-#'   \item{id}{id}
-#'   \item{prov}{province code}
-#'   \item{regency}{regency/municipality code}
-#'   \item{weight}{weight from survey}
-#'   \item{strata}{strata}
-#'   \item{edu}{last completed education}
-#'   \item{age}{age}
+#'   \item{PSU}{Primary Sampling Unit}
+#'   \item{WEIGHT}{Weight from survey}
+#'   \item{PROV}{province code}
+#'   \item{REGENCY}{regency/municipality code}
+#'   \item{STRATA}{Strata}
+#'   \item{income}{Income}
+#'   \item{neet}{Not in education employment or training status}
 #'   \item{sex}{sex (1: male, 2: female)}
-#'   \item{head}{is she/he the head of the household}
+#'   \item{age}{age}
+#'   \item{disability}{disability status (0: False, 1: True)}
+#'   \item{edu}{last completed education}
 #' }
 #' @source \url{https://www.bps.go.id}
-"df_svy1"
+"df_svy22"
 
-#' @title df_svy2: The August 2023 National Labor Force Survey dataset in Java Island, Indonesia.
-#' @description A dataset containing several auxiliary variable in Java Island, Indonesia in 2023.
+#' @title df_svy23: The August 2023 National Labor Force Survey dataset in East Java, Indonesia.
+#' @description A dataset containing several auxiliary variable in East Java, Indonesia in 2023.
 #' @format
-#' A data frame with 32.769 rows and 11 variables with 119 domains.
+#' A data frame with 66.245 rows and 11 variables with 38 domains.
 #'
 #' \describe{
-#'   \item{id}{id}
-#'   \item{prov}{province code}
-#'   \item{regency}{regency/municipality code}
-#'   \item{weight}{weight from survey}
-#'   \item{strata}{strata}
-#'   \item{unemployment}{unemployment status (0: False, 1: True)}
-#'   \item{income}{income}
-#'   \item{edu}{last completed education}
-#'   \item{age}{age}
+#'   \item{PSU}{Primary Sampling Unit}
+#'   \item{WEIGHT}{Weight from survey}
+#'   \item{PROV}{province code}
+#'   \item{REGENCY}{regency/municipality code}
+#'   \item{STRATA}{Strata}
+#'   \item{income}{Income}
+#'   \item{neet}{Not in education employment or training status}
 #'   \item{sex}{sex (1: male, 2: female)}
-#'   \item{head}{is she/he the head of the household}
+#'   \item{age}{age}
+#'   \item{disability}{disability status (0: False, 1: True)}
+#'   \item{edu}{last completed education}
 #' }
 #' @source \url{https://www.bps.go.id}
-"df_svy2"
+"df_svy23"

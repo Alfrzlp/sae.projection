@@ -7,9 +7,12 @@ Author: c(
       person("Azka", "Ubaidillah", role = "aut", email = "azka@stis.ac.id", comment = c(ORCID = "0000-0002-3597-0459")) 
     )
 Maintainer: Ridson Al Farizal <ridsonap@bps.go.id>
-Description: The sae.projection package provides tools for performing Small Area Estimation (SAE) using projection-based methods.
-    This approach is particularly useful for generating reliable domain-level estimates in cases where sample sizes are too small for direct estimation. 
-    By leveraging auxiliary information and statistical models, the package enhances the precision and accuracy of small area estimates.
+Description: The sae.projection package provides a robust tool for small area estimation using a projection-based approach.
+          This method is particularly beneficial in scenarios involving two surveys, the first survey collects data solely on auxiliary variables,
+          while the second, typically smaller survey, collects both the variables of interest and the auxiliary variables.
+          The package constructs a working model to predict the variables of interest for each sample in the first survey.
+          These predictions are then used to estimate relevant indicators for the desired domains. 
+          This condition overcomes the problem of estimation in a small area when only using the second survey data.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -17,12 +20,19 @@ URL: https://github.com/Alfrzlp/sae.projection
 BugReports: https://github.com/Alfrzlp/sae.projection/issues
 Imports: 
     cli,
+    doParallel,
     dplyr,
-    glmnet,
     methods,
-    MKclass,
+    parsnip,
+    recipes,
     rlang,
-    stats
-RoxygenNote: 7.2.0
+    rsample,
+    stats,
+    survey,
+    tune,
+    workflows,
+    yardstick
+RoxygenNote: 7.3.2
 Depends: 
-    R (>= 4.2.0)
+    R (>= 4.3.0),
+    tidymodels
