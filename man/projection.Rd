@@ -10,14 +10,16 @@ projection(
   weight,
   strata = NULL,
   domain,
+  fun = "mean",
   model,
   data_model,
   data_proj,
   model_metric,
-  kfold = 1,
-  grid = 1,
+  kfold = 3,
+  grid = 10,
   parallel_over = "resamples",
   seed = 1,
+  est_y = FALSE,
   ...
 )
 }
@@ -31,6 +33,8 @@ projection(
 \item{strata}{Column name specifying strata, use NULL for no strata}
 
 \item{domain}{Column names in data_model and data_proj representing specific domains for which disaggregated data needs to be produced.}
+
+\item{fun}{A function taking a formula and survey design object as its first two arguments (default = "mean", "total", "varians").}
 
 \item{model}{The working model to be used in the projection estimator. Refer to the details for the available working models.}
 
@@ -49,6 +53,8 @@ If "resamples", then tuning will be performed in parallel over resamples alone. 
 If "everything", then tuning will be performed in parallel at two levels. An outer parallel loop will iterate over resamples. Additionally, an inner parallel loop will iterate over all unique combinations of preprocessor and model tuning parameters for that specific resample. This will result in the preprocessor being re-processed multiple times, but can be faster if that processing is extremely fast.}
 
 \item{seed}{A single value, interpreted as an integer}
+
+\item{est_y}{A logical value indicating whether to return the estimation of \code{y} in \code{data_model}. If \code{TRUE}, the estimation is returned; otherwise, it is not.}
 
 \item{...}{Further argument to the \code{\link[survey]{svydesign}}.}
 }
@@ -93,6 +99,7 @@ A complete list of models can be seen at the following link \href{https://www.tm
 \dontrun{
 library(sae.projection)
 library(dplyr)
+library(bonsai)
 
 df_svy22_income <- df_svy22 \%>\% filter(!is.na(income))
 df_svy23_income <- df_svy23 \%>\% filter(!is.na(income))
@@ -100,23 +107,25 @@ df_svy23_income <- df_svy23 \%>\% filter(!is.na(income))
 # Linear regression
 lm_proj <- projection(
   income ~ age + sex + edu + disability,
-  id = 'PSU', weight = 'WEIGHT', strata = 'STRATA',
-  domain = c('PROV', 'REGENCY'),
+  id = "PSU", weight = "WEIGHT", strata = "STRATA",
+  domain = c("PROV", "REGENCY"),
   model = linear_reg(),
   data_model = df_svy22_income,
   data_proj = df_svy23_income,
+  nest = TRUE
 )
 
 # Random forest regression with hyperparameter tunning
 rf_proj <- projection(
   income ~ age + sex + edu + disability,
-  id = 'PSU', weight = 'WEIGHT', strata = 'STRATA',
-  domain = c('PROV', 'REGENCY'),
+  id = "PSU", weight = "WEIGHT", strata = "STRATA",
+  domain = c("PROV", "REGENCY"),
   model = rand_forest(mtry = tune(), trees = tune(), min_n = tune()),
   data_model = df_svy22_income,
   data_proj = df_svy23_income,
   kfold = 3,
-  grid = 30
+  grid = 10,
+  nest = TRUE
 )
 
 df_svy22_neet <- df_svy22 \%>\% filter(between(age, 15, 24))
@@ -125,35 +134,36 @@ df_svy23_neet <- df_svy23 \%>\% filter(between(age, 15, 24))
 # Logistic regression
 lr_proj <- projection(
   formula = neet ~ sex + edu + disability,
-  id = 'PSU',
-  weight = 'WEIGHT',
-  strata = 'STRATA',
-  domain = c('PROV', 'REGENCY'),
+  id = ~ PSU,
+  weight = ~ WEIGHT,
+  strata = ~ STRATA,
+  domain = ~ PROV + REGENCY,
   model = logistic_reg(),
   data_model = df_svy22_neet,
-  data_proj = df_svy23_neet
+  data_proj = df_svy23_neet,
+  nest = TRUE
 )
 
 # LightGBM regression with hyperparameter tunning
-library(bonsai)
-show_engines('boost_tree')
+show_engines("boost_tree")
 lgbm_model <- boost_tree(
-    mtry = tune(), trees = tune(), min_n = tune(),
-    tree_depth = tune(), learn_rate = tune(),
-   engine = 'lightgbm'
+  mtry = tune(), trees = tune(), min_n = tune(),
+  tree_depth = tune(), learn_rate = tune(),
+  engine = "lightgbm"
 )
 
 lgbm_proj <- projection(
   formula = neet ~ sex + edu + disability,
-  id = 'PSU',
-  weight = 'WEIGHT',
-  strata = 'STRATA',
-  domain = c('PROV', 'REGENCY'),
+  id = "PSU",
+  weight = "WEIGHT",
+  strata = "STRATA",
+  domain = c("PROV", "REGENCY"),
   model = lgbm_model,
   data_model = df_svy22_neet,
   data_proj = df_svy23_neet,
   kfold = 3,
-  grid = 30
+  grid = 10,
+  nest = TRUE
 )
 }
 }

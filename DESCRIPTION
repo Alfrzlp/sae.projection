@@ -1,18 +1,13 @@
 Package: sae.projection
 Type: Package
-Title: Small Area Estimation Using Projection Methods
-Version: 0.1.0
-Author: c(
-      person("Ridson", "Al Farizal P", role = c("aut", "cre","cph"), email = "ridsonap@bps.go.id", comment = c(ORCID = "0000-0003-0617-0214")),
-      person("Azka", "Ubaidillah", role = "aut", email = "azka@stis.ac.id", comment = c(ORCID = "0000-0002-3597-0459")) 
+Title: Small Area Estimation Using Model-Assisted Projection Method
+Version: 0.1.1
+Authors@R: c(
+      person("Ridson", "Al Farizal P", role = c("aut", "cre","cph"), email = "ridsonalfarizal15@gmail.com", comment = c(ORCID = "0000-0003-0617-0214")),
+      person("Azka", "Ubaidillah", role = "aut", email = "azka@stis.ac.id", comment = c(ORCID = "0000-0002-3597-0459")),
+      person("Silvi", "Ajeng Larasati", role = "aut", email = "ajeng397544@gmail.com")
     )
-Maintainer: Ridson Al Farizal <ridsonap@bps.go.id>
-Description: The sae.projection package provides a robust tool for small area estimation using a projection-based approach.
-          This method is particularly beneficial in scenarios involving two surveys, the first survey collects data solely on auxiliary variables,
-          while the second, typically smaller survey, collects both the variables of interest and the auxiliary variables.
-          The package constructs a working model to predict the variables of interest for each sample in the first survey.
-          These predictions are then used to estimate relevant indicators for the desired domains. 
-          This condition overcomes the problem of estimation in a small area when only using the second survey data.
+Description: Combines information from two independent surveys using a model-assisted projection method. Designed for survey sampling scenarios where a large sample collects only auxiliary information (Survey 1) and a smaller sample provides data on both variables of interest and auxiliary variables (Survey 2). Implements a working model to generate synthetic values of the variable of interest by fitting the model to Survey 2 data and predicting values for Survey 1 based on its auxiliary variables (Kim & Rao, 2012) <doi:10.1093/biomet/asr063>.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -31,7 +26,13 @@ Imports:
     survey,
     tune,
     workflows,
-    yardstick
+    yardstick,
+    bonsai,
+    ranger,
+    lightgbm,
+    caret,
+    randomForest,
+    themis
 RoxygenNote: 7.3.2
 Depends: 
     R (>= 4.3.0),

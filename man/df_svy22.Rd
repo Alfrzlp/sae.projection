@@ -3,7 +3,7 @@
 \docType{data}
 \name{df_svy22}
 \alias{df_svy22}
-\title{df_svy22: The August 2022 National Labor Force Survey dataset in East Java, Indonesia.}
+\title{df_svy22: August 2022 National Labor Force Survey Dataset for East Java, Indonesia.}
 \format{
 A data frame with 74.070 rows and 11 variables with 38 domains.
 
@@ -28,6 +28,6 @@ A data frame with 74.070 rows and 11 variables with 38 domains.
 df_svy22
 }
 \description{
-A dataset containing several auxiliary variable in East Java, Indonesia in 2023.
+A dataset from the August 2022 National Labor Force Survey (Sakernas) conducted in East Java, Indonesia.
 }
 \keyword{datasets}

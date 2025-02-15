@@ -29,7 +29,7 @@ Ridson Al Farizal P [ridsonap\@bps.go.id](mailto:ridsonap@bps.go.id)
 
 ## Description
 
-The goal of **sae.projection** is to provide tools for performing **Small Area Estimation (SAE)** using projection-based methods. This approach is particularly effective for generating reliable domain-level estimates in situations where sample sizes are too small for direct estimation. By utilizing auxiliary information and statistical models, the package improves the precision and accuracy of small area estimates.
+The **sae.projection** package provides a robust tool for *small area estimation using a projection-based approach*. This method is particularly beneficial in scenarios involving two surveys, the first survey collects data solely on auxiliary variables, while the second, typically smaller survey, collects both the variables of interest and the auxiliary variables. The package constructs a working model to predict the variables of interest for each sample in the first survey. These predictions are then used to estimate relevant indicators for the desired domains. This condition overcomes the problem of estimation in a small area when only using the second survey data.
 
 ## Installation
 
@@ -49,31 +49,100 @@ library(sae.projection)
 library(dplyr)
 ```
 
-### Logistic Model
+## Regression
 
-```{r example1}
-df_res <- projection_estimator(
-   formula = unemployment ~ edu + sex + age + head,
-   domain = c('prov', 'regency'),
-   weight = 'weight',
-   data_model = df_svy2,
-   data_proj = df_svy1,
-   model = 'logistic',
-   cutoff = 'optimum'
-)
+### Data
+
+```{r}
+df_svy22_income <- df_svy22 %>% filter(!is.na(income))
+df_svy23_income <- df_svy23 %>% filter(!is.na(income))
 ```
 
-### Linear Model
+### Linear Regression Model
 
-```{r example2}
-df_svy2_new <- df_svy2 %>% dplyr::filter(!is.na(income))
-
-m2 <- projection_estimator(
-  formula = income ~ edu + sex + age + head,
-  domain = c('prov', 'regency'),
-  weight = 'weight',
-  data_model = df_svy2_new,
-  data_proj = df_svy1,
-  model = 'linear'
+```{r example1}
+lm_proj <- projection(
+   income ~ age + sex + edu + disability,
+   id = 'PSU', weight = 'WEIGHT', strata = 'STRATA',
+   domain = c('PROV', 'REGENCY'),
+   model = linear_reg(),
+   data_model = df_svy22_income,
+   data_proj = df_svy23_income,
 )
+
+lm_proj$df_result
+```
+
+### Random Forest Regression with Hyperparameter Tunning
+
+```{r example2, eval=FALSE}
+rf_proj <- projection(
+  income ~ age + sex + edu + disability,
+  id = 'PSU', weight = 'WEIGHT', strata = 'STRATA',
+  domain = c('PROV', 'REGENCY'),
+  model = rand_forest(mtry = tune(), trees = tune(), min_n = tune()),
+  data_model = df_svy22_income,
+  data_proj = df_svy23_income,
+  kfold = 3,
+  grid = 20
+)
+
+rf_proj$df_result
+```
+
+## Classification
+
+### Data
+
+```{r}
+df_svy22_neet <- df_svy22 %>% 
+  filter(between(age, 15, 24))
+df_svy23_neet <- df_svy23 %>% 
+  filter(between(age, 15, 24))
+```
+
+### Logistic Regression
+
+```{r example3}
+lr_proj <- projection(
+  formula = neet ~ sex + edu + disability,
+  id = 'PSU',
+  weight = 'WEIGHT',
+  strata = 'STRATA',
+  domain = c('PROV', 'REGENCY'),
+  model = logistic_reg(),
+  data_model = df_svy22_neet,
+  data_proj = df_svy23_neet
+)
+
+lr_proj$df_result
+```
+
+### LightGBM with Hyperparameter Tunning
+
+```{r}
+library(bonsai)
+show_engines('boost_tree')
+lgbm_model <- boost_tree(
+  mtry = tune(), trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(),
+  engine = 'lightgbm'
+)
+
+```
+
+```{r example4, eval=FALSE}
+lgbm_proj <- projection(
+  formula = neet ~ sex + edu + disability,
+  id = 'PSU',
+  weight = 'WEIGHT',
+  strata = 'STRATA',
+  domain = c('PROV', 'REGENCY'),
+  model = lgbm_model,
+  data_model = df_svy22_neet,
+  data_proj = df_svy23_neet,
+  kfold = 3, 
+  grid = 20
+)
+
+lgbm_proj$df_result
 ```
