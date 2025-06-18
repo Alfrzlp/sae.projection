@@ -21,12 +21,5 @@ Imports: FSelector, glmnet, xgboost, survey, cli, doParallel, dplyr,
 RoxygenNote: 7.3.2
 Depends: R (>= 4.3.0), tidymodels
 NeedsCompilation: no
-Packaged: 2025-04-05 10:18:18 UTC; Amelia Rahayu
-Author: Ridson Al Farizal P [aut, cre, cph]
-    (<https://orcid.org/0000-0003-0617-0214>),
-  Azka Ubaidillah [aut] (<https://orcid.org/0000-0002-3597-0459>),
-  Silvi Ajeng Larasati [aut],
-  Amelia Rahayu [aut]
-Maintainer: Ridson Al Farizal P <ridsonalfarizal15@gmail.com>
 Repository: CRAN
 Date/Publication: 2025-04-05 10:40:02 UTC
