@@ -1,39 +1,3 @@
-#' Projection RF Function
-#' @description
-#' This function trains a random forest model and performs domain-level estimation **without bias correction**.
-#'
-#' @param data_model The training dataset, consisting of auxiliary variables and the target variable.
-#' @param target_column The name of the target column in the \code{data_model}.
-#' @param predictor_cols A vector of predictor column names.
-#' @param data_proj The data for projection (prediction), which needs to be projected using the trained model. It must contain the same auxiliary variables as the \code{data_model}
-#' @param domain1 Domain variables for survey estimation (e.g., "province")
-#' @param domain2 Domain variables for survey estimation (e.g., "regency")
-#' @param psu Primary sampling units, representing the structure of the sampling frame.
-#' @param ssu Secondary sampling units, representing the structure of the sampling frame.
-#' @param strata Stratification variable, ensuring that specific subgroups are represented.
-#' @param weights Weights used for the direct estimation from \code{data_model} and indirect estimation from \code{data_proj}.
-#' @param split_ratio Proportion of data used for training (default is 0.8, meaning 80 percent for training and 20 percent for validation).
-#' @param metric The metric used for model evaluation (default is Accuracy, other options include "AUC", "F1", etc.).
-#'
-#' @keywords internal
-#' @return
-#' A list containing the following elements:
-#' \itemize{
-#'    \item \code{model} The trained Random Forest model.
-#'    \item \code{importance} Feature importance showing which features contributed most to the model's predictions.
-#'    \item \code{train_accuracy} Accuracy of the model on the training set.
-#'    \item \code{validation_accuracy} Accuracy of the model on the validation set.
-#'    \item \code{validation_performance} Confusion matrix for the validation set, showing performance metrics like accuracy, precision, recall, etc.
-#'    \item \code{data_proj} The projection data with predicted values.
-#'    \item \code{Domain1} Estimations for Domain 1, including estimated values, variance, and relative standard error.
-#'    \item \code{Domain2} Estimations for Domain 2, including estimated values, variance, and relative standard error.
-#' }
-#'
-#' @import themis
-#' @import caret
-#' @importFrom randomForest combine
-#' @importFrom ranger importance
-#'
 projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
                           domain1, domain2, psu, ssu, strata, weights,
                           split_ratio = 0.8, metric = 'Accuracy') {
@@ -225,27 +189,6 @@ projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
   ))
 }
 
-#' Projection RF with Correction Bias
-#'
-#' @description
-#' This function extends \code{projection_rf} by incorporating **bias correction** for better domain-level estimation.
-#'
-#' @inheritParams projection_rf
-#' @keywords internal
-#'
-#' @return A list containing the following elements:
-#' \itemize{
-#'    \item \code{model} The trained Random Forest model.
-#'    \item \code{importance} Feature importance showing which features contributed most to the model's predictions.
-#'    \item \code{train_accuracy} Accuracy of the model on the training set.
-#'    \item \code{validation_accuracy} Accuracy of the model on the validation set.
-#'    \item \code{validation_performance} Confusion matrix for the validation set, showing performance metrics like accuracy, precision, recall, etc.
-#'    \item \code{data_proj} The projection data with predicted values.
-#'    \item \code{Direct} Direct estimations for Domain 1, including estimated values, variance, and relative standard error.
-#'    \item \code{Domain1_corrected_bias} Bias-corrected estimations for Domain 1, including estimated values, variance, and relative standard error (RSE).
-#'    \item \code{Domain2_corrected_bias} Bias-corrected estimations for Domain 2, including estimated values, variance, and relative standard error (RSE).
-#' }
-#'
 projection_rf_CorrectedBias <- function(data_model, target_column, predictor_cols, data_proj,
                                         domain1, domain2, psu, ssu, strata, weights,
                                         split_ratio = 0.8, metric = 'Accuracy') {
@@ -548,7 +491,18 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
 #'    \item Kim, J. K., & Rao, J. N. (2012). Combining data from two independent surveys: a model-assisted approach. Biometrika, 99(1), 85-100.
 #' }
 #'
-#' @inheritParams projection_rf
+#' @param data_model The training dataset, consisting of auxiliary variables and the target variable.
+#' @param target_column The name of the target column in the \code{data_model}.
+#' @param predictor_cols A vector of predictor column names.
+#' @param data_proj The data for projection (prediction), which needs to be projected using the trained model. It must contain the same auxiliary variables as the \code{data_model}
+#' @param domain1 Domain variables for survey estimation (e.g., "province")
+#' @param domain2 Domain variables for survey estimation (e.g., "regency")
+#' @param psu Primary sampling units, representing the structure of the sampling frame.
+#' @param ssu Secondary sampling units, representing the structure of the sampling frame.
+#' @param strata Stratification variable, ensuring that specific subgroups are represented.
+#' @param weights Weights used for the direct estimation from \code{data_model} and indirect estimation from \code{data_proj}.
+#' @param split_ratio Proportion of data used for training (default is 0.8, meaning 80 percent for training and 20 percent for validation).
+#' @param metric The metric used for model evaluation (default is Accuracy, other options include "AUC", "F1", etc.).
 #' @param bias_correction Logical; if \code{TRUE}, then bias correction is applied, if \code{FALSE}, then bias correction is not applied. Default is \code{FALSE}.
 #'
 #' @return A list containing the following elements:
