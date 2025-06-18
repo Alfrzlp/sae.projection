@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
 
 ## Author
 
-Azka Ubaidillah, Ridson Al Farizal P
+Azka Ubaidillah, Ridson Al Farizal P, Silvi Ajeng Larasati, Amelia Rahayu
 
 ## Maintainer
 
@@ -68,9 +68,10 @@ lm_proj <- projection(
    model = linear_reg(),
    data_model = df_svy22_income,
    data_proj = df_svy23_income,
+   nest = TRUE
 )
 
-lm_proj$df_result
+lm_proj$projection
 ```
 
 ### Random Forest Regression with Hyperparameter Tunning
@@ -87,7 +88,7 @@ rf_proj <- projection(
   grid = 20
 )
 
-rf_proj$df_result
+rf_proj$projection
 ```
 
 ## Classification
@@ -112,10 +113,11 @@ lr_proj <- projection(
   domain = c('PROV', 'REGENCY'),
   model = logistic_reg(),
   data_model = df_svy22_neet,
-  data_proj = df_svy23_neet
+  data_proj = df_svy23_neet,
+  nest = TRUE
 )
 
-lr_proj$df_result
+lr_proj$projection
 ```
 
 ### LightGBM with Hyperparameter Tunning
@@ -144,5 +146,28 @@ lgbm_proj <- projection(
   grid = 20
 )
 
-lgbm_proj$df_result
+lgbm_proj$projection
+```
+
+### Projection Estimator with Random Forest Algorithm
+
+```{r}
+data(df_svy_A)
+data(df_svy_B)
+
+x_predictors <- names(df_svy_A)[7:32]
+result <- projection_randomforest(
+    data_model = df_svy_A,
+    target_column = "Y",
+    predictor_cols = x_predictors,
+    data_proj = df_svy_B,
+    domain1 = "province",
+    domain2 = "regency",
+    psu = "psu",
+    ssu = "ssu",
+    strata = "strata",
+    weights = "weight",
+    bias_correction = FALSE
+)
+
 ```

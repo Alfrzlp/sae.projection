@@ -88,9 +88,7 @@ The available working models include:
 \item KNN \code{nearest_neighbor()}
 \item Naive Bayes \code{naive_bayes()}
 \item Multi Layer Perceptron \code{mlp()}
-\item Random Forest \code{rand_forest()}
 \item Accelerated Oblique Random Forests (Jaeger et al. 2022, Jaeger et al. 2024) \code{rand_forest(engine = 'aorsf')}
-\item XGBoost \code{boost_tree(engine = 'xgboost')}
 \item LightGBM \code{boost_tree(engine = 'lightgbm')}
 }
 A complete list of models can be seen at the following link \href{https://www.tmwr.org/pre-proc-table}{Tidy Modeling With R}
@@ -115,18 +113,6 @@ lm_proj <- projection(
   nest = TRUE
 )
 
-# Random forest regression with hyperparameter tunning
-rf_proj <- projection(
-  income ~ age + sex + edu + disability,
-  id = "PSU", weight = "WEIGHT", strata = "STRATA",
-  domain = c("PROV", "REGENCY"),
-  model = rand_forest(mtry = tune(), trees = tune(), min_n = tune()),
-  data_model = df_svy22_income,
-  data_proj = df_svy23_income,
-  kfold = 3,
-  grid = 10,
-  nest = TRUE
-)
 
 df_svy22_neet <- df_svy22 \%>\% filter(between(age, 15, 24))
 df_svy23_neet <- df_svy23 \%>\% filter(between(age, 15, 24))
