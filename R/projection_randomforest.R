@@ -1,59 +1,107 @@
+#' Projection RF Function
+#' @description
+#' This function trains a random forest model and performs domain-level estimation **without bias correction**.
+#'
+#' @param data_model The training dataset, consisting of auxiliary variables and the target variable.
+#' @param target_column The name of the target column in the \code{data_model}.
+#' @param predictor_cols A vector of predictor column names.
+#' @param data_proj The data for projection (prediction), which needs to be projected using the trained model. It must contain the same auxiliary variables as the \code{data_model}
+#' @param domain1 Domain variables for survey estimation (e.g., "province")
+#' @param domain2 Domain variables for survey estimation (e.g., "regency")
+#' @param psu Primary sampling units, representing the structure of the sampling frame.
+#' @param ssu Secondary sampling units, representing the structure of the sampling frame (default is NULL).
+#' @param strata Stratification variable, ensuring that specific subgroups are represented (default is NULL).
+#' @param weights Weights used for the direct estimation from \code{data_model} and indirect estimation from \code{data_proj}.
+#' @param split_ratio Proportion of data used for training (default is 0.8, meaning 80 percent for training and 20 percent for validation).
+#' @param feature_selection Selection of predictor variables (default is \code{TRUE})
+#'
+#' @keywords internal
+#' @return
+#' A list containing the following elements:
+#' \itemize{
+#'    \item \code{model} The trained Random Forest model.
+#'    \item \code{importance} Feature importance showing which features contributed most to the model's predictions.
+#'    \item \code{train_accuracy} Accuracy of the model on the training set.
+#'    \item \code{validation_accuracy} Accuracy of the model on the validation set.
+#'    \item \code{validation_performance} Confusion matrix for the validation set, showing performance metrics like accuracy, precision, recall, etc.
+#'    \item \code{data_proj} The projection data with predicted values.
+#'    \item \code{Domain1} Estimations for Domain 1, including estimated values, variance, and relative standard error.
+#'    \item \code{Domain2} Estimations for Domain 2, including estimated values, variance, and relative standard error.
+#' }
+#'
+#' @import themis
+#' @import caret
+#' @importFrom randomForest combine
+#' @importFrom ranger importance
+#' @importFrom stats as.formula
+
+#'
 projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
-                          domain1, domain2, psu, ssu, strata, weights,
-                          split_ratio = 0.8, metric = 'Accuracy') {
+                          domain1, domain2, psu, ssu = NULL, strata = NULL, weights,
+                          split_ratio = 0.8, feature_selection = TRUE) {
   Est_Y <- Estimation <- CI_Lower <- CI_Upper <- Variance <- RSE <- NA
 
-  print("Starting preprocessing...")
+  cli::cli_inform("Starting preprocessing...")
+
+  if (identical(data_model, data_proj)) {
+    cli::cli_abort("Model and projection datasets must be different.")
+  }
 
   # Creating a Formula from target_column and predictor_cols
   formula <- stats::reformulate(predictor_cols, response = target_column)
 
-  # Use model.frame to get the data according to the formula
-  modelling <- stats::model.frame(formula, data = data_model)
+  data_model[[target_column]] <- factor(data_model[[target_column]], levels = c(0, 1), labels = c("No", "Yes"))
 
-  # Identification of target & predictor variables
-  predictor_columns <- setdiff(names(modelling), target_column)
-
-  modelling[[target_column]] <- factor(modelling[[target_column]], levels = c("0", "1"), labels = c("No", "Yes"))
-
-  print("Preprocessing completed. Starting data split...")
+  cli::cli_inform("Preprocessing completed. Starting data split...")
 
   # Split dataset (Training & Validation)
   set.seed(123)
-  train_index <- caret::createDataPartition(modelling[[target_column]], p = split_ratio, list = FALSE)
-  train_set <- modelling[train_index, ]
-  validation_set <- modelling[-train_index, ]
+  train_index <- caret::createDataPartition(data_model[[target_column]], p = split_ratio, list = FALSE)
+  train_set <- data_model[train_index, ]
+  validation_set <- data_model[-train_index, ]
 
-  print("Data split completed. Starting RFE...")
+  cli::cli_inform("Data split completed. Checking for missing values...")
 
-  # Recursive Feature Elimination (RFE)
-  control_rfe <- caret::rfeControl(
-    functions = caret::rfFuncs,
-    method = "cv",
-    number = 5,
-    verbose = TRUE
-  )
+  # Check missing values in predictors or target in train set
+  missing_cols <- colnames(train_set)[colSums(is.na(train_set[, c(predictor_cols, target_column), drop = FALSE])) > 0]
 
-  set.seed(123)
-  rfe_results <- caret::rfe(
-    x = train_set[, predictor_columns, drop = FALSE],
-    y = train_set[[target_column]],
-    sizes = c(1:10, 15, 20),
-    rfeControl = control_rfe
-  )
+  if (length(missing_cols) > 0) {
+    cli::cli_abort("Missing values detected in the training dataset.")}
 
-  print("RFE completed. Selecting features...")
+  if (feature_selection) {
+    cli::cli_inform("Feature selection (RFE) enabled. Starting RFE...")
 
-  # Best features based on RFE
-  selected_features <- caret::predictors(rfe_results)
-  if (length(selected_features) == 0) {
-    cli::cli_abort('RFE did not select any features. Please check the dataset', class = "error")
+    control_rfe <- caret::rfeControl(
+      functions = caret::rfFuncs,
+      method = "cv",
+      number = 5,
+      verbose = FALSE
+    )
+
+    set.seed(123)
+    rfe_results <- caret::rfe(
+      x = train_set[, predictor_cols, drop = FALSE],
+      y = train_set[[target_column]],
+      sizes = c(1:10, 15, 20),
+      rfeControl = control_rfe
+    )
+
+    selected_features <- caret::predictors(rfe_results)
+
+    if (length(selected_features) == 0) {
+      cli::cli_abort('RFE did not select any features. Please check the dataset', class = "error")
+    }
+
+    cli::cli_inform("RFE completed. Features selected.")
+  } else {
+    cli::cli_warn("Feature selection (RFE) disabled. Using all predictor columns.")
+    selected_features <- predictor_cols
   }
 
   train_set_selected <- train_set[, c(selected_features, target_column)]
   validation_set_selected <- validation_set[, c(selected_features, target_column)]
 
-  print("Features selected. Starting hyperparameter tuning...")
+  cli::cli_inform("Features selected. Starting hyperparameter tuning...")
 
   # Hyperparameter tuning
   control_final <- caret::trainControl(
@@ -63,7 +111,7 @@ projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
     sampling = "smote"
   )
 
-  print("Hyperparameter tuning completed. Training model...")
+  cli::cli_inform("Hyperparameter tuning completed. Training model...")
 
   # Training model with tuneLength
   set.seed(123)
@@ -76,10 +124,10 @@ projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
     num.trees = 500,
     importance = "impurity",
     replace = FALSE,
-    metric = metric
+    metric = "Accuracy"
   )
 
-  print("Model trained. Starting model evaluation...")
+  cli::cli_inform("Model trained. Starting model evaluation...")
 
   # Model evaluation
   train_pred <- stats::predict(rf_model, newdata = train_set_selected)
@@ -90,29 +138,32 @@ projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
   validation_conf_matrix <- caret::confusionMatrix(validation_pred, validation_set_selected[[target_column]])
   validation_accuracy <- validation_conf_matrix$overall["Accuracy"]
 
-  print("Evaluation completed. Starting predictions on new data...")
+  cli::cli_inform("Evaluation completed. Starting predictions on new data...")
 
   for (col in selected_features) {
-    if (is.factor(modelling[[col]])) {
-      data_proj[[col]] <- factor(data_proj[[col]], levels = levels(modelling[[col]]))
+    if (is.factor(data_model[[col]])) {
+      data_proj[[col]] <- factor(data_proj[[col]], levels = levels(data_model[[col]]))
     }
   }
 
   # Prediction on new data
   data_proj$Est_Y <- stats::predict(rf_model, newdata = data_proj, na.action = stats::na.pass)
 
-  print("Predictions completed. Starting indirect estimation on domain...")
+  cli::cli_inform("Predictions completed. Starting indirect estimation on domain...")
 
   data_proj <- dplyr::mutate(data_proj, Est_Y = factor(Est_Y, levels = c("No", "Yes")))
 
   # Survey design
+  if (is.null(psu)) {cli::cli_abort("PSU cannot be NULL.")}
+
   susenas_design <- survey::svydesign(
-    ids = stats::as.formula(paste("~", psu, "+", ssu)),
-    strata = stats::as.formula(paste("~", strata)),
+    ids = if (!is.null(ssu) && ssu != "") stats::as.formula(paste("~", psu, "+", ssu)) else stats::as.formula(paste("~", psu)),
+    strata = if (!is.null(strata)) stats::as.formula(paste("~", strata)) else NULL,
     weights = stats::as.formula(paste("~", weights)),
     data = data_proj,
     nest = TRUE
   )
+
 
   # Estimation for domain1
   result_domain1 <- survey::svyby(
@@ -174,7 +225,7 @@ projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
       RSE
     )
 
-  print("Estimation completed. Returning results...")
+  cli::cli_inform("Estimation completed. Returning results...")
 
   # Return results
   return(list(
@@ -189,27 +240,45 @@ projection_rf <- function(data_model, target_column, predictor_cols, data_proj,
   ))
 }
 
+#' Projection RF with Correction Bias
+#'
+#' @description
+#' This function extends \code{projection_rf} by incorporating **bias correction** for better domain-level estimation.
+#'
+#' @inheritParams projection_rf
+#' @keywords internal
+#'
+#' @return A list containing the following elements:
+#' \itemize{
+#'    \item \code{model} The trained Random Forest model.
+#'    \item \code{importance} Feature importance showing which features contributed most to the model's predictions.
+#'    \item \code{train_accuracy} Accuracy of the model on the training set.
+#'    \item \code{validation_accuracy} Accuracy of the model on the validation set.
+#'    \item \code{validation_performance} Confusion matrix for the validation set, showing performance metrics like accuracy, precision, recall, etc.
+#'    \item \code{data_proj} The projection data with predicted values.
+#'    \item \code{Direct} Direct estimations for Domain 1, including estimated values, variance, and relative standard error.
+#'    \item \code{Domain1_corrected_bias} Bias-corrected estimations for Domain 1, including estimated values, variance, and relative standard error (RSE).
+#'    \item \code{Domain2_corrected_bias} Bias-corrected estimations for Domain 2, including estimated values, variance, and relative standard error (RSE).
+#' }
+#'
 projection_rf_CorrectedBias <- function(data_model, target_column, predictor_cols, data_proj,
-                                        domain1, domain2, psu, ssu, strata, weights,
-                                        split_ratio = 0.8, metric = 'Accuracy') {
+                                        domain1, domain2, psu, ssu = NULL, strata = NULL, weights,
+                                        split_ratio = 0.8, feature_selection = TRUE) {
   Est_Y <- Est_corrected <-  Estimation_Direct <- Estimation_Domain1 <-  Estimation_Domain2 <- Estimation_Pred <- RSE <- RSE_corrected <- Var_corrected <- Variance <- weight_domain1 <- weight_domain2 <- NA
 
-  print("Starting preprocessing...")
+  cli::cli_inform("Starting preprocessing...")
 
-  # Membuat formula menggunakan reformulate
+  same_data <- identical(data_model, data_proj)
+  if (same_data) {
+    cli::cli_warn(
+      "Model and projection datasets are identical.")}
+
+  # Creating a Formula from target_column and predictor_cols
   formula <- stats::reformulate(predictor_cols, response = target_column)
 
-  # Mengonversi target_column menjadi faktor
   data_model[[target_column]] <- factor(data_model[[target_column]], levels = c(0, 1), labels = c("No", "Yes"))
 
-  # Menyamakan faktor pada data proyek agar sesuai dengan data model
-  for (col in predictor_cols) {
-    if (is.factor(data_model[[col]])) {
-      data_proj[[col]] <- factor(data_proj[[col]], levels = levels(data_model[[col]]))
-    }
-  }
-
-  print("Preprocessing completed. Starting data split...")
+  cli::cli_inform("Preprocessing completed. Starting data split...")
 
   # Split data model
   set.seed(123)
@@ -217,29 +286,48 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
   train_set <- data_model[train_index, ]
   validation_set <- data_model[-train_index, ]
 
-  print("Data split completed. Starting RFE...")
+  cli::cli_inform("Data split completed. Checking for missing values...")
 
-  # Recursive Feature Elimination (RFE)
-  control_rfe <- caret::rfeControl(functions = caret::rfFuncs, method = "cv", number = 5, verbose = TRUE)
-  set.seed(123)
-  rfe_results <- caret::rfe(
-    x = train_set[, predictor_cols, drop = FALSE],
-    y = train_set[[target_column]],
-    sizes = c(1:10, 15, 20),
-    rfeControl = control_rfe
-  )
+  # Check missing values in predictors or target in train set
+  missing_cols <- colnames(train_set)[colSums(is.na(train_set[, c(predictor_cols, target_column), drop = FALSE])) > 0]
 
-  print("RFE completed. Selecting features...")
+  if (length(missing_cols) > 0) {
+    cli::cli_abort("Missing values detected in the training dataset.")}
 
-  # Best features based on RFE
-  selected_features <- caret::predictors(rfe_results)
-  if (length(selected_features) == 0) {
-    cli::cli_abort('RFE did not select any features. Please check the dataset')
+  if (feature_selection) {
+    cli::cli_inform("Feature selection (RFE) enabled. Starting RFE...")
+
+    control_rfe <- caret::rfeControl(
+      functions = caret::rfFuncs,
+      method = "cv",
+      number = 5,
+      verbose = FALSE
+    )
+
+    set.seed(123)
+    rfe_results <- caret::rfe(
+      x = train_set[, predictor_cols, drop = FALSE],
+      y = train_set[[target_column]],
+      sizes = c(1:10, 15, 20),
+      rfeControl = control_rfe
+    )
+
+    selected_features <- caret::predictors(rfe_results)
+
+    if (length(selected_features) == 0) {
+      cli::cli_abort('RFE did not select any features. Please check the dataset', class = "error")
+    }
+
+    cli::cli_inform("RFE completed. Features selected.")
+  } else {
+    cli::cli_warn("Feature selection (RFE) disabled. Using all predictor columns.")
+    selected_features <- predictor_cols
   }
+
   train_set_selected <- train_set[, c(selected_features, target_column)]
   validation_set_selected <- validation_set[, c(selected_features, target_column)]
 
-  print("Features selected. Starting hyperparameter tuning...")
+  cli::cli_inform("Features selected. Starting hyperparameter tuning...")
 
   # Hyperparameter tuning
   control_final <- caret::trainControl(
@@ -249,7 +337,7 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
     sampling = "smote"
   )
 
-  print("Hyperparameter tuning completed. Training model...")
+  cli::cli_inform("Hyperparameter tuning completed. Training model...")
 
   # Training model with selected features
   set.seed(123)
@@ -262,10 +350,10 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
     num.trees = 500,
     importance = "impurity",
     replace = FALSE,
-    metric = metric
+    metric = "Accuracy"
   )
 
-  print("Model training completed. Starting model evaluation...")
+  cli::cli_inform("Model training completed. Starting model evaluation...")
 
   # Evaluate the model
   data_model$prediction <- stats::predict(rf_model, newdata = data_model)
@@ -280,7 +368,7 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
   validation_conf_matrix <- caret::confusionMatrix(validation_pred, validation_set_selected[[target_column]])
   validation_accuracy <- validation_conf_matrix$overall["Accuracy"]
 
-  print("Evaluation completed. Starting prediction on new data...")
+  cli::cli_inform("Evaluation completed. Starting prediction on new data...")
 
   # Predictions on new data
   for (col in selected_features) {
@@ -292,11 +380,12 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
 
   data_proj <- dplyr::mutate(data_proj, Est_Y = factor(Est_Y, levels = c("No", "Yes")))
 
-  print("Prediction completed. Starting indirect estimation for domain...")
+  cli::cli_inform("Prediction completed. Starting indirect estimation for domain...")
 
+  if (is.null(psu)) {cli::cli_abort("PSU cannot be NULL.")}
   susenas_design <- survey::svydesign(
-    ids = stats::as.formula(paste("~", psu, "+", ssu)),
-    strata = stats::as.formula(paste("~", strata)),
+    ids_formula <- if (!is.null(ssu)) as.formula(paste("~", psu, "+", ssu)) else as.formula(paste("~", psu)),
+    strata = if (!is.null(strata)) stats::as.formula(paste("~", strata)) else NULL,
     weights = stats::as.formula(paste("~", weights)),
     data = data_proj,
     nest = TRUE
@@ -350,13 +439,13 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
       RSE
     )
 
-  print("Indirect estimation completed. Starting direct estimation...")
+  cli::cli_inform("Indirect estimation completed. Starting direct estimation...")
 
   options(survey.adjust.domain.lonely = TRUE, survey.lonely.psu = 'adjust')
 
-  ssn_design_dir <- survey::svydesign(
-    ids = stats::as.formula(paste0("~ ", psu, " + ", ssu)),
-    strata = stats::as.formula(paste0("~", strata)),
+  ssn_design_2 <- survey::svydesign(
+    ids = if (!is.null(ssu) && ssu != "") stats::as.formula(paste("~", psu, "+", ssu)) else stats::as.formula(paste("~", psu)),
+    strata = if (!is.null(strata)) stats::as.formula(paste("~", strata)) else NULL,
     weights = stats::as.formula(paste0("~ ", weights)),
     data = data_model,
     nest = TRUE
@@ -367,8 +456,7 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
     by = stats::as.formula(paste0("~ ", domain1)),
     vartype = c('cvpct', 'var'),
     FUN = survey::svymean,
-    design = ssn_design_dir,
-    bys = stats::as.formula(paste0("~ ", domain1))
+    design = ssn_design_2
   ) %>%
     dplyr::rename(
       Estimation_Direct = paste(target_column, "Yes", sep = ""),
@@ -386,23 +474,14 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
       RSE
     )
 
-  print("Direct estimation completed. Starting bias correction estimation...")
-
-  ssn_design_pred <- survey::svydesign(
-    ids = stats::as.formula(paste0("~ ", psu, " + ", ssu)),
-    strata = stats::as.formula(paste0("~", strata)),
-    weights = stats::as.formula(paste0("~ ", weights)),
-    data = data_model,
-    nest = TRUE
-  )
+  cli::cli_inform("Direct estimation completed. Starting bias correction estimation...")
 
   result_pred <- survey::svyby(
     formula = stats::as.formula("~ prediction"),
     by = stats::as.formula(paste0("~ ", domain1)),
     vartype = c('cvpct', 'var'),
     FUN = survey::svymean,
-    design = ssn_design_pred,
-    bys = stats::as.formula(paste0("~ ", domain1))
+    design = ssn_design_2
   ) %>%
     dplyr::rename(
       Estimation_Pred = paste("predictionYes"),
@@ -434,7 +513,12 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
     dplyr::mutate(wi = weight_domain2 / weight_domain1)
 
   # Bias correction calculation for data model
-  bias_est <- result_pred$Estimation_Pred - result_direct$Estimation_Direct
+  bias_est <- if (result_domain1$Estimation_Domain1 > result_direct$Estimation_Direct) {
+    result_direct$Estimation_Direct - result_pred$Estimation_Pred
+  } else {
+    result_pred$Estimation_Pred - result_direct$Estimation_Direct
+  }
+
   var_bias_est <- result_pred$Variance + result_direct$Variance
 
   result_corrected_domain2 <- result_domain2 %>%
@@ -457,10 +541,9 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
       RSE_corrected = round(RSE_corrected, 2)
     )
 
-  print("Bias-corrected estimation completed. Returning results...")
+  cli::cli_inform("Bias-corrected estimation completed. Returning results...")
 
-  # Return results
-  return(list(
+  result_list <- list(
     model = rf_model,
     importance = caret::varImp(rf_model),
     train_accuracy = train_accuracy,
@@ -468,9 +551,15 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
     validation_performance = validation_conf_matrix,
     data_proj = data_proj,
     Direct = result_direct,
-    Domain1_corrected_bias = result_corrected_domain1,
-    Domain2_corrected_bias = result_corrected_domain2
-  ))
+    Domain1_corrected_bias = result_corrected_domain1
+  )
+
+  if (!same_data) {
+    result_list$Domain2_corrected_bias <- result_corrected_domain2
+  }
+
+  return(result_list)
+
 }
 
 
@@ -491,18 +580,7 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
 #'    \item Kim, J. K., & Rao, J. N. (2012). Combining data from two independent surveys: a model-assisted approach. Biometrika, 99(1), 85-100.
 #' }
 #'
-#' @param data_model The training dataset, consisting of auxiliary variables and the target variable.
-#' @param target_column The name of the target column in the \code{data_model}.
-#' @param predictor_cols A vector of predictor column names.
-#' @param data_proj The data for projection (prediction), which needs to be projected using the trained model. It must contain the same auxiliary variables as the \code{data_model}
-#' @param domain1 Domain variables for survey estimation (e.g., "province")
-#' @param domain2 Domain variables for survey estimation (e.g., "regency")
-#' @param psu Primary sampling units, representing the structure of the sampling frame.
-#' @param ssu Secondary sampling units, representing the structure of the sampling frame.
-#' @param strata Stratification variable, ensuring that specific subgroups are represented.
-#' @param weights Weights used for the direct estimation from \code{data_model} and indirect estimation from \code{data_proj}.
-#' @param split_ratio Proportion of data used for training (default is 0.8, meaning 80 percent for training and 20 percent for validation).
-#' @param metric The metric used for model evaluation (default is Accuracy, other options include "AUC", "F1", etc.).
+#' @inheritParams projection_rf
 #' @param bias_correction Logical; if \code{TRUE}, then bias correction is applied, if \code{FALSE}, then bias correction is not applied. Default is \code{FALSE}.
 #'
 #' @return A list containing the following elements:
@@ -538,51 +616,53 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
 #'
 #' data_A <- df_svy_A
 #' data_B <- df_svy_B
-#' x_predictors <- data_A %>% select(7:32) %>% names()
 #'
-#' # The alternative of calculating "psu, ssu, strata" if not present in the data_model is:
-#' data_A <- data_A %>%
-#' left_join(data_B %>% select(psu, ssu, strata, no_sample, no_household),
-#'           by = c('no_sample', 'no_household'),
-#'           multiple = 'any'
-#' )
+#' # Get predictor variables from data_model
+#' x_predictors <- data_A %>% select(5:19) %>% names()
 #'
 #' # Run projection_randomforest without bias correction
-#' result_standard <- projection_randomforest(
-#'                           data_model = data_A,
-#'                           target_column = "Y",
-#'                           predictor_cols = x_predictors,
-#'                           data_proj = data_B,
-#'                           domain1 = "province",
-#'                           domain2 = "regency",
-#'                           psu = "psu",
-#'                           ssu = "ssu",
-#'                           strata = "strata",
-#'                           weights = "weight",
-#'                           metric = "Accuracy",
-#'                           bias_correction = FALSE)
-#' print(result_standard)
+#' rf_proj <- projection_randomforest(
+#'                 data_model = data_A,
+#'                 target_column = "Y",
+#'                 predictor_cols = x_predictors,
+#'                 data_proj = data_B,
+#'                 domain1 = "province",
+#'                 domain2 = "regency",
+#'                 psu = "num",
+#'                 ssu = NULL,
+#'                 strata = NULL,
+#'                 weights = "weight",
+#'                 feature_selection = TRUE,
+#'                 bias_correction = FALSE)
+#' print(rf_proj)
+#' rf_proj$Domain1
+#' rf_proj$Domain2
 #'
 #' # Run projection_randomforest with bias correction
-#' result_bias_corrected <- projection_randomforest(
-#'                           data_model = data_A,
-#'                           target_column = "Y",
-#'                           predictor_cols = x_predictors,
-#'                           data_proj = data_B,
-#'                           domain1 = "province",
-#'                           domain2 = "regency",
-#'                           psu = "psu",
-#'                           ssu = "ssu",
-#'                           strata = "strata",
-#'                           weights = "weight",
-#'                           metric = "Accuracy",
-#'                           bias_correction = TRUE)
-#' print(result_bias_corrected)
+#' rf_proj_corrected <- projection_randomforest(
+#'                 data_model = data_A,
+#'                 target_column = "Y",
+#'                 predictor_cols = x_predictors,
+#'                 data_proj = data_B,
+#'                 domain1 = "province",
+#'                 domain2 = "regency",
+#'                 psu = "num",
+#'                 ssu = NULL,
+#'                 strata = NULL,
+#'                 weights = "weight",
+#'                 feature_selection = TRUE,
+#'                 bias_correction = TRUE)
+#' print(rf_proj_corrected)
+#' rf_proj_corrected$Direct
+#' rf_proj_corrected$Domain1_corrected_bias
+#' rf_proj_corrected$Domain2_corrected_bias
+#'
 #' }
 #'@md
 projection_randomforest <- function(data_model, target_column, predictor_cols, data_proj,
-                                    domain1, domain2, psu, ssu, strata, weights,
-                                    split_ratio = 0.8, metric = 'Accuracy', bias_correction = FALSE) {
+                                    domain1, domain2, psu, ssu = NULL, strata = NULL, weights,
+                                    split_ratio = 0.8, feature_selection = TRUE,
+                                    bias_correction = FALSE) {
 
   # Check if PSU, SSU, and strata exist in data_model when bias correction is enabled
   if (bias_correction) {
@@ -594,14 +674,14 @@ projection_randomforest <- function(data_model, target_column, predictor_cols, d
 
   # Select the appropriate function based on bias_correction
   if (bias_correction) {
-    print("Bias correction is enabled. Calculating indirect estimation with bias correction.")
+    cli::cli_inform("Info: Bias correction is enabled. Calculating indirect estimation with bias correction.")
     return(projection_rf_CorrectedBias(data_model, target_column, predictor_cols, data_proj,
                                        domain1, domain2, psu, ssu, strata, weights,
-                                       split_ratio, metric))
+                                       split_ratio, feature_selection))
   } else {
-    print("Bias correction is disabled. Calculating indirect estimation without bias correction.")
+    cli::cli_inform("Info: Bias correction is disabled. Calculating indirect estimation without bias correction.")
     return(projection_rf(data_model, target_column, predictor_cols, data_proj,
                          domain1, domain2, psu, ssu, strata, weights,
-                         split_ratio, metric))
+                         split_ratio, feature_selection))
   }
 }

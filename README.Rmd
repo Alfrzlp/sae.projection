@@ -61,34 +61,17 @@ df_svy23_income <- df_svy23 %>% filter(!is.na(income))
 ### Linear Regression Model
 
 ```{r example1}
-lm_proj <- projection(
-   income ~ age + sex + edu + disability,
-   id = 'PSU', weight = 'WEIGHT', strata = 'STRATA',
-   domain = c('PROV', 'REGENCY'),
-   model = linear_reg(),
-   data_model = df_svy22_income,
-   data_proj = df_svy23_income,
-   nest = TRUE
+lm_proj <- ma_projection(
+  income ~ age + sex + edu + disability,
+  cluster_ids = "PSU", weight = "WEIGHT", strata = "STRATA",
+  domain = c("PROV", "REGENCY"),
+  working_model = linear_reg(),
+  data_model = df_svy22_income,
+  data_proj = df_svy23_income,
+  nest = TRUE
 )
 
 lm_proj$projection
-```
-
-### Random Forest Regression with Hyperparameter Tunning
-
-```{r example2, eval=FALSE}
-rf_proj <- projection(
-  income ~ age + sex + edu + disability,
-  id = 'PSU', weight = 'WEIGHT', strata = 'STRATA',
-  domain = c('PROV', 'REGENCY'),
-  model = rand_forest(mtry = tune(), trees = tune(), min_n = tune()),
-  data_model = df_svy22_income,
-  data_proj = df_svy23_income,
-  kfold = 3,
-  grid = 20
-)
-
-rf_proj$projection
 ```
 
 ## Classification
@@ -96,22 +79,22 @@ rf_proj$projection
 ### Data
 
 ```{r}
-df_svy22_neet <- df_svy22 %>% 
+df_svy22_neet <- df_svy22 %>%
   filter(between(age, 15, 24))
-df_svy23_neet <- df_svy23 %>% 
+df_svy23_neet <- df_svy23 %>%
   filter(between(age, 15, 24))
 ```
 
 ### Logistic Regression
 
 ```{r example3}
-lr_proj <- projection(
+lr_proj <- ma_projection(
   formula = neet ~ sex + edu + disability,
-  id = 'PSU',
-  weight = 'WEIGHT',
-  strata = 'STRATA',
-  domain = c('PROV', 'REGENCY'),
-  model = logistic_reg(),
+  cluster_ids = "PSU",
+  weight = "WEIGHT",
+  strata = "STRATA",
+  domain = c("PROV", "REGENCY"),
+  working_model = logistic_reg(),
   data_model = df_svy22_neet,
   data_proj = df_svy23_neet,
   nest = TRUE
@@ -124,26 +107,26 @@ lr_proj$projection
 
 ```{r}
 library(bonsai)
-show_engines('boost_tree')
+show_engines("boost_tree")
 lgbm_model <- boost_tree(
   mtry = tune(), trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(),
-  engine = 'lightgbm'
+  engine = "lightgbm"
 )
-
 ```
 
 ```{r example4, eval=FALSE}
-lgbm_proj <- projection(
+lgbm_proj <- ma_projection(
   formula = neet ~ sex + edu + disability,
-  id = 'PSU',
-  weight = 'WEIGHT',
-  strata = 'STRATA',
-  domain = c('PROV', 'REGENCY'),
-  model = lgbm_model,
+  cluster_ids = "PSU",
+  weight = "WEIGHT",
+  strata = "STRATA",
+  domain = c("PROV", "REGENCY"),
+  working_model = lgbm_model,
   data_model = df_svy22_neet,
   data_proj = df_svy23_neet,
-  kfold = 3, 
-  grid = 20
+  cv_folds = 3,
+  grid = 20,
+  nest = TRUE
 )
 
 lgbm_proj$projection
@@ -154,20 +137,51 @@ lgbm_proj$projection
 ```{r}
 data(df_svy_A)
 data(df_svy_B)
+x_predictors <- names(df_svy_A)[5:19]
 
-x_predictors <- names(df_svy_A)[7:32]
+# Projection RF with feature selection and bias correction
 result <- projection_randomforest(
-    data_model = df_svy_A,
-    target_column = "Y",
-    predictor_cols = x_predictors,
-    data_proj = df_svy_B,
-    domain1 = "province",
-    domain2 = "regency",
-    psu = "psu",
-    ssu = "ssu",
-    strata = "strata",
-    weights = "weight",
-    bias_correction = FALSE
+  data_model = df_svy_A,
+  target_column = "Y",
+  predictor_cols = x_predictors,
+  data_proj = df_svy_B,
+  domain1 = "province",
+  domain2 = "regency",
+  psu = "num",
+  ssu = NULL,
+  strata = NULL,
+  weights = "weight",
+  feature_selection = TRUE,
+  bias_correction = TRUE
 )
+print(result)
+```
 
+### Projection Estimator with XGBoost Algorithm
+
+```{r}
+data(df_svy_A)
+data(df_svy_B)
+
+# Remove unused identifier column
+df_svy_A <- df_svy_A |> dplyr::select(-id_ind)
+df_svy_B <- df_svy_B |> dplyr::select(-id_ind)
+
+# Projection XGBoost with feature selection and bias correction
+result <- projection_xgboost(
+  target_col = "Y",
+  data_model = df_svy_A,
+  data_proj = df_svy_B,
+  id = "num",
+  STRATA = NULL,
+  domain1 = "province",
+  domain2 = "regency",
+  weight = "weight",
+  nfold = 10,
+  test_size = 0.2,
+  task_type = "classification",
+  feature_selection = TRUE,
+  corrected_bias = TRUE
+)
+print(result)
 ```

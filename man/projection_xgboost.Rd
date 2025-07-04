@@ -2,7 +2,7 @@
 % Please edit documentation in R/projection_xgboost.R
 \name{projection_xgboost}
 \alias{projection_xgboost}
-\title{Projection Estimator}
+\title{Projection Estimator with XGBoost Algorithm}
 \usage{
 projection_xgboost(
   target_col,
@@ -16,7 +16,8 @@ projection_xgboost(
   task_type,
   test_size = 0.2,
   nfold = 5,
-  corrected_bias = FALSE
+  corrected_bias = FALSE,
+  feature_selection = TRUE
 )
 }
 \arguments{
@@ -46,37 +47,53 @@ Use "regression" for tasks where the goal is to predict a continuous outcome, su
 
 \item{corrected_bias}{A logical value indicating whether to apply bias correction to the estimation results from the modeling process.
 When set to TRUE, this parameter ensures that the estimates are adjusted to account for any systematic biases, leading to more accurate and reliable predictions.}
+
+\item{feature_selection}{Selection of predictor variables (default is \code{TRUE})}
 }
 \value{
-The function returns a list containing:
-\code{params_used} The hyperparameters and settings of the trained model used for projection.
-\code{nfeatures} The number of features selected and used in the trained model for projection.
-\code{domain1_estimation} Projected estimation results for each domain 1, example province, including :
+A list containing the following components:
+\describe{
+\item{\code{metadata}}{A list of metadata about the modeling process, including:
 \itemize{
-\item \code{Estimation} Estimated values.
-\item \code{RSE} Relative Standard Error.
-\item \code{var} Variance of the estimation.
+\item \code{method}: Description of the method used (e.g., "Projection Estimator With XGBoost Algorithm"),
+\item \code{model_type}: The type of model, either "classification" or "regression",
+\item \code{feature_selection_used}: Logical, whether feature selection was used,
+\item \code{corrected_bias_applied}: Logical, whether bias correction was applied,
+\item \code{n_features_used}: Number of predictor variables used,
+\item \code{model_params}: The hyperparameters and settings of the final XGBoost model,
+\item \code{features_selected} (optional): Names of features selected, if feature selection was applied.
 }
-\code{domain2_estimation} Projected estimation results for each domain2, example regency (kabupaten/kota), including :
-\itemize{
-\item \code{Estimation} Estimated values.
-\item \code{RSE} Relative Standard Error.
-\item \code{var} Variance of the estimation.
 }
 
-If \code{task_type} is \code{"classification"}:
-\code{mean_train_accuracy} Mean training accuracy.
-\code{final_accuracy} Final model accuracy on the test data.
-\code{confusion_matrix} Confusion matrix of the classification model.
+\item{\code{estimation}}{A list of projection estimation results, including:
+\itemize{
+\item \code{projected_data}: The dataset used for projection (e.g., kabupaten/kota) with predicted values,
+\item \code{domain1_estimation}: Estimated values for domain 1 (e.g., province level), including:
+\itemize{
+\item \code{Estimation}, \code{RSE}, \code{var}
+},
+\item \code{domain2_estimation}: Estimated values for domain 2 (e.g., regency level), including:
+\itemize{
+\item \code{Estimation}, \code{RSE}, \code{var}
+}
+}
+}
 
-If \code{task_type} is \code{"regression"}:
-\code{mean_train_rmse} Mean training RMSE.
-\code{final_rmse} Final RMSE on the test data.
+\item{\code{performance}}{(Only if applicable) A list of model performance metrics:
+\itemize{
+\item \code{mean_train_accuracy}, \code{final_accuracy}, \code{confusion_matrix} (for classification),
+\item \code{mean_train_rmse}, \code{final_rmse} (for regression).
+}
+}
 
-If \code{corrected_bias} is \code{TRUE}:
-\code{direct_estimation} Direct estimation before bias correction.
-\code{koreksi_bias_domain1} Bias-corrected estimation for provinces.
-\code{koreksi_bias_domain2} Bias-corrected estimation for regencies.
+\item{\code{bias_correction}}{(Optional) A list of bias correction results, returned only if \code{corrected_bias = TRUE}, including:
+\itemize{
+\item \code{direct_estimation}: Direct estimation before correction,
+\item \code{corrected_domain1}: Bias-corrected estimates for domain 1,
+\item \code{corrected_domain2}: Bias-corrected estimates for domain 2.
+}
+}
+}
 }
 \description{
 \strong{Kim and Rao (2012)}, proposed a model-assisted projection estimation method for two independent surveys, where the first survey  (\strong{A1}) has a large sample that only collects auxiliary variables, while the second survey (\strong{A1}) has a smaller sample but contains information on both the focal variable and auxiliary variables.
@@ -95,19 +112,23 @@ library(FSelector)
 library(glmnet)
 library(recipes)
 
-Data_A <- df_survey_A
-Data_B <- df_survey_B
+Data_A <- df_svy_A
+Data_B <- df_svy_B
 
 hasil <- projection_xgboost(
                             target_col = "Y",
                             data_model = Data_A,
                             data_proj = Data_B,
-                            id = "psu+ssu",
-                            STRATA = "strata",
+                            id = "num",
+                            STRATA = NULL,
                             domain1 = "province",
                             domain2 = "regency",
                             weight = "weight",
-                            task_type = "classification")
+                            nfold = 10,
+                            test_size = 0.2 ,
+                            task_type = "classification",
+                            corrected_bias = TRUE,
+                            feature_selection = TRUE)
 }
 }
 \references{

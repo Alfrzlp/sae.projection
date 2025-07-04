@@ -1,0 +1,64 @@
+---
+title: "An Application to Projection Estimator with Random Forest Algorithm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{An Application to Projection Estimator with Random Forest Algorithm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Load package and data
+```{r setup}
+library(sae.projection)
+data(df_svy_A)
+data(df_svy_B)
+```
+
+## Get the variables
+```{r}
+x_predictors <- names(df_svy_A)[5:19]
+```
+
+## Run projection_randomforest without bias correction
+```{r}
+rf_proj <- projection_randomforest(
+                data_model = df_svy_A,
+                target_column = "Y",
+                predictor_cols = x_predictors,
+                data_proj = df_svy_B,
+                domain1 = "province",
+                domain2 = "regency",
+                psu = "num",
+                ssu = NULL,
+                strata = NULL,
+                weights = "weight",
+                feature_selection = TRUE,
+                bias_correction = FALSE)
+print(rf_proj)
+```
+
+## Run projection_randomforest with bias correction
+```{r}
+rf_proj_corrected <- projection_randomforest(
+                data_model = df_svy_A,
+                target_column = "Y",
+                predictor_cols = x_predictors,
+                data_proj = df_svy_B,
+                domain1 = "province",
+                domain2 = "regency",
+                psu = "num",
+                ssu = NULL,
+                strata = NULL,
+                weights = "weight",
+                feature_selection = TRUE,
+                bias_correction = TRUE)
+print(rf_proj_corrected)
+```
+

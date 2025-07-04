@@ -1,4 +1,4 @@
-#' Projection Estimator
+#' Projection Estimator with XGBoost Algorithm
 #'
 #' @description
 #' **Kim and Rao (2012)**, proposed a model-assisted projection estimation method for two independent surveys, where the first survey  (**A1**) has a large sample that only collects auxiliary variables, while the second survey (**A1**) has a smaller sample but contains information on both the focal variable and auxiliary variables.
@@ -30,36 +30,51 @@
 #' Use "regression" for tasks where the goal is to predict a continuous outcome, such as forecasting sales revenue or predicting house prices.
 #' @param corrected_bias A logical value indicating whether to apply bias correction to the estimation results from the modeling process.
 #' When set to TRUE, this parameter ensures that the estimates are adjusted to account for any systematic biases, leading to more accurate and reliable predictions.
+#' @param feature_selection Selection of predictor variables (default is \code{TRUE})
 #'
-#' @return The function returns a list containing:
-#' \code{params_used} The hyperparameters and settings of the trained model used for projection.
-#' \code{nfeatures} The number of features selected and used in the trained model for projection.
-#' \code{domain1_estimation} Projected estimation results for each domain 1, example province, including :
-#'   \itemize{
-#'     \item \code{Estimation} Estimated values.
-#'     \item \code{RSE} Relative Standard Error.
-#'     \item \code{var} Variance of the estimation.
+#' @return A list containing the following components:
+#' \describe{
+#'   \item{\code{metadata}}{A list of metadata about the modeling process, including:
+#'     \itemize{
+#'       \item \code{method}: Description of the method used (e.g., "Projection Estimator With XGBoost Algorithm"),
+#'       \item \code{model_type}: The type of model, either "classification" or "regression",
+#'       \item \code{feature_selection_used}: Logical, whether feature selection was used,
+#'       \item \code{corrected_bias_applied}: Logical, whether bias correction was applied,
+#'       \item \code{n_features_used}: Number of predictor variables used,
+#'       \item \code{model_params}: The hyperparameters and settings of the final XGBoost model,
+#'       \item \code{features_selected} (optional): Names of features selected, if feature selection was applied.
+#'     }
 #'   }
-#' \code{domain2_estimation} Projected estimation results for each domain2, example regency (kabupaten/kota), including :
-#'   \itemize{
-#'     \item \code{Estimation} Estimated values.
-#'     \item \code{RSE} Relative Standard Error.
-#'     \item \code{var} Variance of the estimation.
+#'
+#'   \item{\code{estimation}}{A list of projection estimation results, including:
+#'     \itemize{
+#'       \item \code{projected_data}: The dataset used for projection (e.g., kabupaten/kota) with predicted values,
+#'       \item \code{domain1_estimation}: Estimated values for domain 1 (e.g., province level), including:
+#'         \itemize{
+#'           \item \code{Estimation}, \code{RSE}, \code{var}
+#'         },
+#'       \item \code{domain2_estimation}: Estimated values for domain 2 (e.g., regency level), including:
+#'         \itemize{
+#'           \item \code{Estimation}, \code{RSE}, \code{var}
+#'         }
+#'     }
 #'   }
 #'
-#' If `task_type` is `"classification"`:
-#' \code{mean_train_accuracy} Mean training accuracy.
-#' \code{final_accuracy} Final model accuracy on the test data.
-#' \code{confusion_matrix} Confusion matrix of the classification model.
+#'   \item{\code{performance}}{(Only if applicable) A list of model performance metrics:
+#'     \itemize{
+#'       \item \code{mean_train_accuracy}, \code{final_accuracy}, \code{confusion_matrix} (for classification),
+#'       \item \code{mean_train_rmse}, \code{final_rmse} (for regression).
+#'     }
+#'   }
 #'
-#' If `task_type` is `"regression"`:
-#' \code{mean_train_rmse} Mean training RMSE.
-#' \code{final_rmse} Final RMSE on the test data.
-#'
-#' If `corrected_bias` is `TRUE`:
-#' \code{direct_estimation} Direct estimation before bias correction.
-#' \code{koreksi_bias_domain1} Bias-corrected estimation for provinces.
-#' \code{koreksi_bias_domain2} Bias-corrected estimation for regencies.
+#'   \item{\code{bias_correction}}{(Optional) A list of bias correction results, returned only if \code{corrected_bias = TRUE}, including:
+#'     \itemize{
+#'       \item \code{direct_estimation}: Direct estimation before correction,
+#'       \item \code{corrected_domain1}: Bias-corrected estimates for domain 1,
+#'       \item \code{corrected_domain2}: Bias-corrected estimates for domain 2.
+#'     }
+#'   }
+#' }
 #'
 #' @export
 #' @import xgboost
@@ -67,6 +82,7 @@
 #' @import FSelector
 #' @import glmnet
 #' @importFrom stats coef
+#' @importFrom stats setNames
 #'
 #' @examples
 #' \donttest{
@@ -76,32 +92,35 @@
 #' library(glmnet)
 #' library(recipes)
 #'
-#' Data_A <- df_survey_A
-#' Data_B <- df_survey_B
+#' Data_A <- df_svy_A
+#' Data_B <- df_svy_B
 #'
 #'hasil <- projection_xgboost(
 #'                             target_col = "Y",
 #'                             data_model = Data_A,
 #'                             data_proj = Data_B,
-#'                             id = "psu+ssu",
-#'                             STRATA = "strata",
+#'                             id = "num",
+#'                             STRATA = NULL,
 #'                             domain1 = "province",
 #'                             domain2 = "regency",
 #'                             weight = "weight",
-#'                             task_type = "classification")
+#'                             nfold = 10,
+#'                             test_size = 0.2 ,
+#'                             task_type = "classification",
+#'                             corrected_bias = TRUE,
+#'                             feature_selection = TRUE)
 #' }
 #' @md
-projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = NULL, domain1, domain2,
-                               weight, task_type, test_size = 0.2 , nfold = 5, corrected_bias=FALSE) {
+projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = NULL, domain1, domain2, weight, task_type, test_size = 0.2 , nfold = 5, corrected_bias = FALSE, feature_selection = TRUE) {
   set.seed(999)
 
   # Load Data
-  base::cat("\nLoad data...\n")
-  if (!base::is.data.frame(data_model)) {
-    data_model <- base::as.data.frame(data_model)
+  cat("\nLoad data...\n")
+  if (!is.data.frame(data_model)) {
+    data_model <- as.data.frame(data_model)
   }
-  if (!base::is.data.frame(data_proj)) {
-    data_proj <- base::as.data.frame(data_proj)
+  if (!is.data.frame(data_proj)) {
+    data_proj <- as.data.frame(data_proj)
   }
   Y <- data_model[[target_col]]
 
@@ -110,91 +129,49 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
     # First, validate that task_type is either "regression" or "classification"
     valid_task_types <- c("regression", "classification")
     if (!task_type %in% valid_task_types) {
-      base::stop(base::paste("Error: task_type must be 'regression' or 'classification'. You entered '",
-                             task_type, "'", sep = ""))
+      stop(paste("Error: task_type must be 'regression' or 'classification'. You entered '",
+                 task_type, "'", sep = ""))
     }
 
     # Then, proceed with the existing task type detection
-    if (base::is.numeric(Y) && base::length(base::unique(Y)) > 10) {
+    if (is.numeric(Y) && length(unique(Y)) > 10) {
       suggested_task <- "regression"
-    } else if (base::is.factor(Y) || (base::is.numeric(Y) && base::length(base::unique(Y)) <= 10)) {
-      num_classes <- base::length(base::unique(Y))
-      suggested_task <- base::ifelse(num_classes > 2, "multiclass", "binary")
+    } else if (is.factor(Y) || (is.numeric(Y) && length(unique(Y)) <= 10)) {
+      num_classes <- length(unique(Y))
+      suggested_task <- ifelse(num_classes > 2, "multiclass", "binary")
     } else {
-      base::stop("Error: Data is not suitable for regression or classification.")
+      stop("Error: Data is not suitable for regression or classification.")
     }
 
     # Check if the specified task_type is appropriate for the data
     if ((task_type == "regression" && suggested_task != "regression") ||
         (task_type == "classification" && suggested_task == "regression")) {
 
-      base::cat("Warning: Selected task_type is", task_type,
-                "but the data is more suitable for", suggested_task, "\n")
+      cat("Warning: Selected task_type is", task_type,
+          "but the data is more suitable for", suggested_task, "\n")
 
       # confirmation from user
-      response <- base::readline(prompt = "Do you want to continue using your selected task type? (yes/no): ")
+      response <- readline(prompt = "Do you want to continue using your selected task type? (yes/no): ")
 
-      if (base::tolower(response) == "yes") {
-        base::cat("Proceeding with user-defined task type:", task_type, "\n")
+      if (tolower(response) == "yes") {
+        cat("Proceeding with user-defined task type:", task_type, "\n")
         return(task_type)
       } else {
-        base::stop("Process stopped by user due to task type mismatch.")
+        stop("Process stopped by user due to task type mismatch.")
       }
     }
-
     return(suggested_task)
   }
-
-  # Validate whether task_type matches the data
   validated_task_type <- detect_task_type(Y, task_type)
-  base::cat("\nFinal Task Type:", validated_task_type, "\n")
+  cat("\nFinal Task Type:", validated_task_type, "\n")
 
-  # Handling Missing Values (Preprocessing Step)
-  base::cat("\nHandling missing values in preprocessing...\n")
   data_model_original <- data_model
   data_proj_original <- data_proj
-
-  impute_missing_values <- function(df) {
-    for (col in base::names(df)) {
-      if (base::is.numeric(df[[col]])) {
-        unique_vals <- base::unique(stats::na.omit(df[[col]]))
-
-        if (base::all(unique_vals %in% c(0, 1))) {
-          mode_value <- base::as.numeric(base::names(base::which.max(base::table(df[[col]], useNA = "no"))))
-          df[[col]][base::is.na(df[[col]])] <- mode_value
-        } else {
-          df[[col]][base::is.na(df[[col]])] <- stats::median(df[[col]], na.rm = TRUE)
-        }
-      } else if (base::is.factor(df[[col]]) || base::is.character(df[[col]])) {
-        mode_value <- base::names(base::which.max(base::table(df[[col]], useNA = "no")))
-        if (base::length(mode_value) > 0) {
-          df[[col]][base::is.na(df[[col]])] <- mode_value
-        }
-      }
-    }
-    return(df)
-  }
-
-  data_model_imputed <- impute_missing_values(data_model)
-  data_proj_imputed <- impute_missing_values(data_proj)
-
-  # Feature Selection
-  cat("\nPerforming feature selection...\n")
-  names(data_model) <- gsub("/", "_", names(data_model_imputed))
-  names(data_proj) <- gsub("/", "_", names(data_proj_imputed))
   if (base::grepl("\\+", id)) {
     id_components <- base::unlist(base::strsplit(id, "\\+"))
     id_components <- base::trimws(id_components)
   } else {
     id_components <- id
-  }
-  excluded_columns <- c(id_components, STRATA, weight, domain1, domain2, "no_sample","no_household","weight","ID")
-  data_model_filtered <- data_model_imputed[, !(names(data_model_imputed) %in% excluded_columns)]
-
-  if (task_type == "classification"){
-    data_model_filtered$Y <- as.factor(Y)
-  } else if (task_type == "regression") {
-    data_model_filtered$Y <- as.numeric(as.character(Y))
   }
 
   if (task_type == "classification"){
@@ -202,67 +179,108 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
     multi_class <- unique_classes > 2
     num_classes <- unique_classes
   }
-  predictor_names <- setdiff(names(data_model_filtered), c(target_col, "Y"))
 
-  # Feature Selection Methods
-  rf_model <- randomForest::randomForest(Y ~ ., data = data_model_filtered, importance = TRUE)
-  if (task_type == "classification"){
-    rf_imp <- randomForest::importance(rf_model)[, "MeanDecreaseAccuracy"]
-  } else if (task_type == "regression") {
-    rf_imp <- randomForest::importance(rf_model)[, "IncNodePurity"]
-  }
-  threshold_rf <- stats::median(rf_imp)
-  rf_selected <- names(rf_imp)[rf_imp > threshold_rf]
+  if (feature_selection == TRUE){
+    # Handling Missing Values (Preprocessing Step)
+    base::cat("\nHandling missing values in preprocessing...\n")
+    impute_missing_values <- function(df) {
+      for (col in base::names(df)) {
+        if (base::is.numeric(df[[col]])) {
+          unique_vals <- base::unique(stats::na.omit(df[[col]]))
 
-  variances <- sapply(data_model_filtered[, predictor_names], stats::var)
-  threshold_llcfs <- stats::median(variances)
-  llcfs_selected <- names(variances)[variances > threshold_llcfs]
-
-  cfs_formula <- stats::as.formula(paste("Y ~", paste(predictor_names, collapse = " + ")))
-  cfs_selected <- FSelector::cfs(cfs_formula, data = data_model_filtered)
-
-  y_num <- as.numeric(as.character(Y))
-  correlations <- sapply(data_model_filtered[, predictor_names], function(x) abs(stats::cor(x, y_num)))
-  threshold_udfs <- stats::median(correlations)
-  udfs_selected <- names(correlations)[correlations > threshold_udfs]
-
-  x <- stats::model.matrix(Y ~ ., data = data_model_filtered)[, -1]
-  if (task_type == "classification"){
-    if (num_classes > 2) {
-      # Multi-kelas
-      y <- as.numeric(as.factor(Y)) - 1
-      family_type <- "multinomial"
-    } else {
-      # Biner
-      y <- as.numeric(as.factor(Y)) - 1
-      family_type <- "binomial"
+          if (base::all(unique_vals %in% c(0, 1))) {
+            mode_value <- base::as.numeric(base::names(base::which.max(base::table(df[[col]], useNA = "no"))))
+            df[[col]][base::is.na(df[[col]])] <- mode_value
+          } else {
+            df[[col]][base::is.na(df[[col]])] <- stats::median(df[[col]], na.rm = TRUE)
+          }
+        } else if (base::is.factor(df[[col]]) || base::is.character(df[[col]])) {
+          mode_value <- base::names(base::which.max(base::table(df[[col]], useNA = "no")))
+          if (base::length(mode_value) > 0) {
+            df[[col]][base::is.na(df[[col]])] <- mode_value
+          }
+        }
+      }
+      return(df)
     }
-  } else if (task_type == "regression") {
-    y <- as.numeric(Y)
-    family_type <- "gaussian"
+
+    data_model_imputed <- impute_missing_values(data_model)
+    data_proj_imputed <- impute_missing_values(data_proj)
+
+    # Feature Selection
+    cat("\nPerforming feature selection...\n")
+    names(data_model) <- gsub("/", "_", names(data_model_imputed))
+    names(data_proj) <- gsub("/", "_", names(data_proj_imputed))
+    excluded_columns <- c(id_components, STRATA, weight, domain1, domain2, "no_sample","no_household","weight","ID")
+    data_model_filtered <- data_model_imputed[, !(names(data_model_imputed) %in% excluded_columns)]
+
+    if (task_type == "classification"){
+      data_model_filtered$Y <- as.factor(Y)
+    } else if (task_type == "regression") {
+      data_model_filtered$Y <- as.numeric(as.character(Y))
+    }
+    predictor_names <- setdiff(names(data_model_filtered), c(target_col, "Y"))
+
+    # Feature Selection Methods
+    rf_model <- randomForest::randomForest(Y ~ ., data = data_model_filtered, importance = TRUE)
+    if (task_type == "classification"){
+      rf_imp <- randomForest::importance(rf_model)[, "MeanDecreaseAccuracy"]
+    } else if (task_type == "regression") {
+      rf_imp <- randomForest::importance(rf_model)[, "IncNodePurity"]
+    }
+    threshold_rf <- stats::median(rf_imp)
+    rf_selected <- names(rf_imp)[rf_imp > threshold_rf]
+
+    variances <- sapply(data_model_filtered[, predictor_names], stats::var)
+    threshold_llcfs <- stats::median(variances)
+    llcfs_selected <- names(variances)[variances > threshold_llcfs]
+
+    cfs_formula <- stats::as.formula(paste("Y ~", paste(predictor_names, collapse = " + ")))
+    cfs_selected <- FSelector::cfs(cfs_formula, data = data_model_filtered)
+
+    y_num <- as.numeric(as.character(Y))
+    correlations <- sapply(data_model_filtered[, predictor_names], function(x) abs(stats::cor(x, y_num)))
+    threshold_udfs <- stats::median(correlations)
+    udfs_selected <- names(correlations)[correlations > threshold_udfs]
+
+    x <- stats::model.matrix(Y ~ ., data = data_model_filtered)[, -1]
+    if (task_type == "classification"){
+      if (num_classes > 2) {
+        # Multi-kelas
+        y <- as.numeric(as.factor(Y)) - 1
+        family_type <- "multinomial"
+      } else {
+        # Biner
+        y <- as.numeric(as.factor(Y)) - 1
+        family_type <- "binomial"
+      }
+    } else if (task_type == "regression") {
+      y <- as.numeric(Y)
+      family_type <- "gaussian"
+    }
+
+    cv_lasso <- glmnet::cv.glmnet(x, y, alpha = 1, family = family_type, nfold = nfold)
+    lasso_coef <- coef(cv_lasso, s = "lambda.min")
+    if (is.list(lasso_coef)) {
+      lasso_coef_matrix <- do.call(cbind, lasso_coef)
+      lasso_selected <- rownames(lasso_coef_matrix)[rowSums(lasso_coef_matrix != 0) > 0]
+    } else {
+      lasso_selected <- rownames(lasso_coef)[lasso_coef[, 1] != 0]
+    }
+    lasso_selected <- setdiff(lasso_selected, "(Intercept)")
+
+    selected_list <- list(
+      RF = rf_selected,
+      LLCFS = llcfs_selected,
+      CFS = cfs_selected,
+      UDFS = udfs_selected,
+      LASSO = lasso_selected
+    )
+
+    all_features <- unique(unlist(selected_list))
+    votes <- sapply(all_features, function(feat) sum(sapply(selected_list, function(sel) feat %in% sel)))
+    final_selected <- names(votes)[votes >= 3]
   }
-
-  cv_lasso <- glmnet::cv.glmnet(x, y, alpha = 1, family = family_type, nfold = nfold)
-  lasso_coef <- coef(cv_lasso, s = "lambda.min")
-  if (is.list(lasso_coef)) {
-    lasso_coef_matrix <- do.call(cbind, lasso_coef)
-    lasso_selected <- rownames(lasso_coef_matrix)[rowSums(lasso_coef_matrix != 0) > 0]
-  } else {
-    lasso_selected <- rownames(lasso_coef)[lasso_coef[, 1] != 0]
-  }
-  lasso_selected <- setdiff(lasso_selected, "(Intercept)")
-
-  selected_list <- list(
-    RF = rf_selected,
-    LLCFS = llcfs_selected,
-    CFS = cfs_selected,
-    UDFS = udfs_selected,
-    LASSO = lasso_selected
-  )
-
-  all_features <- unique(unlist(selected_list))
-  votes <- sapply(all_features, function(feat) sum(sapply(selected_list, function(sel) feat %in% sel)))
-  final_selected <- names(votes)[votes >= 3]
 
   data_model <- data_model_original
   data_proj <- data_proj_original
@@ -285,37 +303,44 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
 
   # Prepare Data for XGBoost
   cat("\nPreparing data for XGBoost...\n")
-  X <- as.matrix(data_model_filtered[, final_selected])
+  if(feature_selection == FALSE){
+    final_selected <- setdiff(names(data_model_filtered), target_col)
+  }
+
+  X <- as.matrix(data_model_filtered[, final_selected, drop = FALSE])
   if (task_type == "classification"){
     y <- as.numeric(as.factor(data_model_filtered[[target_col]])) - 1
-
-    # Pastikan label berada dalam rentang yang benar
     num_class <- length(unique(y))
     if (any(y < 0 | y >= num_class)) {
-      stop("Error: Label tidak sesuai format. Harap pastikan y berada dalam rentang [0, num_class - 1].")
+      stop("Error: Labels are not in the correct format. Please ensure that y values are within the range [0, num_class - 1].")
     }
   } else if (task_type == "regression") {
     y <- as.numeric(data_model_filtered[[target_col]])
   }
 
-  train_index <- base::sample.int(n = nrow(data_model_filtered), size = round((1 - test_size) * nrow(data_model_filtered)), replace = FALSE)
-  X_train <- X[train_index, ]
-  y_train <- y[train_index]
+  train_index <- base::sample.int(n = nrow(data_model_filtered),
+                                  size = round((1 - test_size) * nrow(data_model_filtered)),
+                                  replace = FALSE)
 
-  X_test <- X[-train_index, ]
+  X_train <- X[train_index, , drop = FALSE]
+  y_train <- y[train_index]
+  X_test <- X[-train_index, , drop = FALSE]
   y_test <- y[-train_index]
 
-  dtrain <- xgboost::xgb.DMatrix(data = as.matrix(X_train), label = y_train)
+  # Create DMatrix
+  dtrain <- xgboost::xgb.DMatrix(data = X_train, label = y_train)
   dtest <- xgboost::xgb.DMatrix(data = X_test, label = y_test)
 
   # Hyperparameter Tuning
   cat("\nPerforming hyperparameter tuning...\n")
   param_grid <- base::expand.grid(
     eta = c(0.1, 0.3),
-    max_depth = c(3, 7, 9) ,
+    max_depth = c(3, 7) ,
     min_child_weight = c(1, 3),
     subsample = c(0.8, 1.0),
-    colsample_bytree = c(0.7, 1.0)
+    colsample_bytree = c(0.7, 1.0),
+    lambda = c(0, 1),
+    alpha = c(0, 0.5)
   )
 
   best_params <- NULL
@@ -343,14 +368,13 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
       min_child_weight = param_grid$min_child_weight[i],
       subsample = param_grid$subsample[i],
       colsample_bytree = param_grid$colsample_bytree[i],
+      lambda = param_grid$lambda[i],
+      alpha = param_grid$alpha[i],
       nthread = parallel::detectCores()
     )
 
-    # Tambahkan num_class hanya jika multi_class
     if (task_type == "classification" && multi_class) {
       params$num_class <- num_classes
-      params$lambda <- 1
-      params$alpha <- 0.5
     } else {
       params$num_class <- NULL
     }
@@ -358,11 +382,11 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
     cv_model <- xgboost::xgb.cv(
       params = params,
       data = dtrain,
-      nrounds = 100,
+      nrounds = 1000,
       nfold = nfold,
       stratified = TRUE,
       verbose = 0,
-      early_stopping_rounds = 10
+      early_stopping_rounds = 50
     )
 
     best_iteration <- cv_model$best_iteration
@@ -453,7 +477,7 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
   } else if (task_type == "regression" && base::length(pred) == nrow(data_proj)){
     data_proj$P.hat <- pred
   } else {
-    stop("Error: Ukuran prediksi tidak sesuai dengan jumlah baris di data_proj!")
+    stop("Error: Prediction size does not match the number of rows in data_proj!")
   }
 
   cat("\nPerforming survey estimation...\n")
@@ -469,7 +493,6 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
     nest = TRUE
   )
 
-  # Updated: Using domain1 instead of Prov
   Phat.proj.domain1 <- survey::svyby(
     formula = stats::as.formula("~P.hat"),
     by = stats::as.formula(paste("~", domain1)),
@@ -595,11 +618,19 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
     bias_est <- predict.estimate$Estimation - direct.estimate$Estimation
     var_bias_est <- predict.estimate$Variance + direct.estimate$Variance
 
-    domain2_corrected  <- Phat.proj.domain2 %>%
+    bias_lookup <- data.frame(
+      domain1_val = predict.estimate[[domain1]],
+      bias_est = bias_est,
+      var_bias_est = var_bias_est
+    ) %>%
+      stats::setNames(c(domain1, "bias_est", "var_bias_est"))
+
+    domain2_corrected <- Phat.proj.domain2 %>%
+      dplyr::left_join(bias_lookup, by = domain1) %>%
       dplyr::mutate(
-        Est_corrected = Phat.proj.domain2$Estimation + rep(bias_est, length.out = nrow(Phat.proj.domain2)),
+        Est_corrected = Estimation + bias_est,
         Est_corrected = round(Est_corrected, 2),
-        Var_corrected = Phat.proj.domain2$Variance + rep(var_bias_est, length.out = nrow(Phat.proj.domain2)),
+        Var_corrected = Variance + var_bias_est,
         Var_corrected = round(Var_corrected, 6),
         RSE_corrected = (sqrt(Var_corrected) / (Est_corrected / 100)) * 100,
         RSE_corrected = round(RSE_corrected, 2)
@@ -614,45 +645,66 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
         Est_corrected = sum(Est_corrected * wi, na.rm = TRUE),
         Var_corrected = sum((wi^2) * Var_corrected, na.rm = TRUE),
         .groups = "drop"
-      ) %>%
-      dplyr::mutate(
+      ) %>% dplyr::mutate(
         Est_corrected = round(Est_corrected, 2),
         Var_corrected = round(Var_corrected, 6),
         RSE_corrected = (sqrt(Var_corrected) / (Est_corrected / 100)) * 100,
         RSE_corrected = round(RSE_corrected, 2)
+      ) %>% dplyr::select(
+        Est_corrected,
+        Var_corrected,
+        RSE_corrected
       )
-
     cat("\nCorrected Bias Calculation Completed...\n")
   }
 
-  return_list <- base::list(
-    params_used = final_model$params,
-    nfeatures = length(final_model$feature_names),
-    domain1_estimation = Phat.proj.domain1,
-    domain2_estimation = Phat.proj.domain2
+  return_list <- list(
+    metadata = list(
+      method = "Projection Estimator With XGBoost Algorithm",
+      model_type = task_type,
+      feature_selection_used = feature_selection,
+      corrected_bias_applied = corrected_bias,
+      n_features_used = length(final_model$feature_names),
+      model_params = final_model$params
+    ),
+
+    estimation = list(
+      projected_data = data_proj,
+      domain1_estimation = Phat.proj.domain1,
+      domain2_estimation = Phat.proj.domain2
+    )
   )
 
+  if (feature_selection) {
+    return_list$metadata$features_selected <- final_selected
+  }
+
   if (task_type == "classification") {
-    return_list$mean_train_accuracy <- base::mean(train_accuracies)
-    return_list$final_accuracy <- accuracy
-    return_list$confusion_matrix <- cm
+    return_list$performance <- list(
+      mean_train_accuracy = mean(train_accuracies),
+      final_accuracy = accuracy,
+      confusion_matrix = cm
+    )
   }
 
   if (task_type == "regression") {
-    return_list$mean_train_rmse <- base::mean(train_rmse_values)
-    return_list$final_rmse <- test_rmse
+    return_list$performance <- list(
+      mean_train_rmse = mean(train_rmse_values),
+      final_rmse = test_rmse
+    )
   }
 
-  if (corrected_bias == TRUE) {
-    return_list$direct_estimation <- direct.estimate
-    return_list$koreksi_bias_domain1 <- domain1_corrected
-    return_list$koreksi_bias_domain2 <- domain2_corrected
+  if (corrected_bias) {
+    return_list$bias_correction <- list(
+      direct_estimation = direct.estimate,
+      corrected_domain1 = domain1_corrected,
+      corrected_domain2 = domain2_corrected
+    )
   }
-
-  base::return(return_list)
+  return(return_list)
 }
 
 utils::globalVariables(c(
-  "P.hat", "Estimation", "RSE", "Est_corrected",
+  "P.hat", "Estimation","Variance", "RSE", "Est_corrected",
   "Var_corrected", "RSE_corrected", "wi"
 ))

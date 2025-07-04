@@ -12,11 +12,11 @@ projection_randomforest(
   domain1,
   domain2,
   psu,
-  ssu,
-  strata,
+  ssu = NULL,
+  strata = NULL,
   weights,
   split_ratio = 0.8,
-  metric = "Accuracy",
+  feature_selection = TRUE,
   bias_correction = FALSE
 )
 }
@@ -35,15 +35,15 @@ projection_randomforest(
 
 \item{psu}{Primary sampling units, representing the structure of the sampling frame.}
 
-\item{ssu}{Secondary sampling units, representing the structure of the sampling frame.}
+\item{ssu}{Secondary sampling units, representing the structure of the sampling frame (default is NULL).}
 
-\item{strata}{Stratification variable, ensuring that specific subgroups are represented.}
+\item{strata}{Stratification variable, ensuring that specific subgroups are represented (default is NULL).}
 
 \item{weights}{Weights used for the direct estimation from \code{data_model} and indirect estimation from \code{data_proj}.}
 
 \item{split_ratio}{Proportion of data used for training (default is 0.8, meaning 80 percent for training and 20 percent for validation).}
 
-\item{metric}{The metric used for model evaluation (default is Accuracy, other options include "AUC", "F1", etc.).}
+\item{feature_selection}{Selection of predictor variables (default is \code{TRUE})}
 
 \item{bias_correction}{Logical; if \code{TRUE}, then bias correction is applied, if \code{FALSE}, then bias correction is not applied. Default is \code{FALSE}.}
 }
@@ -89,46 +89,47 @@ library(dplyr)
 
 data_A <- df_svy_A
 data_B <- df_svy_B
-x_predictors <- data_A \%>\% select(7:32) \%>\% names()
 
-# The alternative of calculating "psu, ssu, strata" if not present in the data_model is:
-data_A <- data_A \%>\%
-left_join(data_B \%>\% select(psu, ssu, strata, no_sample, no_household),
-          by = c('no_sample', 'no_household'),
-          multiple = 'any'
-)
+# Get predictor variables from data_model
+x_predictors <- data_A \%>\% select(5:19) \%>\% names()
 
 # Run projection_randomforest without bias correction
-result_standard <- projection_randomforest(
-                          data_model = data_A,
-                          target_column = "Y",
-                          predictor_cols = x_predictors,
-                          data_proj = data_B,
-                          domain1 = "province",
-                          domain2 = "regency",
-                          psu = "psu",
-                          ssu = "ssu",
-                          strata = "strata",
-                          weights = "weight",
-                          metric = "Accuracy",
-                          bias_correction = FALSE)
-print(result_standard)
+rf_proj <- projection_randomforest(
+                data_model = data_A,
+                target_column = "Y",
+                predictor_cols = x_predictors,
+                data_proj = data_B,
+                domain1 = "province",
+                domain2 = "regency",
+                psu = "num",
+                ssu = NULL,
+                strata = NULL,
+                weights = "weight",
+                feature_selection = TRUE,
+                bias_correction = FALSE)
+print(rf_proj)
+rf_proj$Domain1
+rf_proj$Domain2
 
 # Run projection_randomforest with bias correction
-result_bias_corrected <- projection_randomforest(
-                          data_model = data_A,
-                          target_column = "Y",
-                          predictor_cols = x_predictors,
-                          data_proj = data_B,
-                          domain1 = "province",
-                          domain2 = "regency",
-                          psu = "psu",
-                          ssu = "ssu",
-                          strata = "strata",
-                          weights = "weight",
-                          metric = "Accuracy",
-                          bias_correction = TRUE)
-print(result_bias_corrected)
+rf_proj_corrected <- projection_randomforest(
+                data_model = data_A,
+                target_column = "Y",
+                predictor_cols = x_predictors,
+                data_proj = data_B,
+                domain1 = "province",
+                domain2 = "regency",
+                psu = "num",
+                ssu = NULL,
+                strata = NULL,
+                weights = "weight",
+                feature_selection = TRUE,
+                bias_correction = TRUE)
+print(rf_proj_corrected)
+rf_proj_corrected$Direct
+rf_proj_corrected$Domain1_corrected_bias
+rf_proj_corrected$Domain2_corrected_bias
+
 }
 }
 \references{

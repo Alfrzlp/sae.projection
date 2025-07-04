@@ -21,9 +21,6 @@ A data frame with 66.245 rows and 11 variables.
   \item{edu}{last completed education}
 }
 }
-\source{
-\url{https://www.bps.go.id}
-}
 \usage{
 df_svy23
 }
