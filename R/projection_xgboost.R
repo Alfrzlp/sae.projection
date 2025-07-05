@@ -615,7 +615,11 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
       dplyr::mutate(wi = weight_domain2 / weight_domain1)
 
     base::cat("\nBias...\n")
-    bias_est <- predict.estimate$Estimation - direct.estimate$Estimation
+    bias_est <- ifelse(
+      Phat.proj.domain1$Estimation > direct.estimate$Estimation,
+      direct.estimate$Estimation - predict.estimate$Estimation,
+      predict.estimate$Estimation - direct.estimate$Estimation
+    )
     var_bias_est <- predict.estimate$Variance + direct.estimate$Variance
 
     bias_lookup <- data.frame(
@@ -650,10 +654,6 @@ projection_xgboost <- function(target_col, data_model, data_proj, id, STRATA = N
         Var_corrected = round(Var_corrected, 6),
         RSE_corrected = (sqrt(Var_corrected) / (Est_corrected / 100)) * 100,
         RSE_corrected = round(RSE_corrected, 2)
-      ) %>% dplyr::select(
-        Est_corrected,
-        Var_corrected,
-        RSE_corrected
       )
     cat("\nCorrected Bias Calculation Completed...\n")
   }
