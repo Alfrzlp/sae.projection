@@ -620,24 +620,6 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
 #' # Get predictor variables from data_model
 #' x_predictors <- data_A %>% select(5:19) %>% names()
 #'
-#' # Run projection_randomforest without bias correction
-#' rf_proj <- projection_randomforest(
-#'                 data_model = data_A,
-#'                 target_column = "Y",
-#'                 predictor_cols = x_predictors,
-#'                 data_proj = data_B,
-#'                 domain1 = "province",
-#'                 domain2 = "regency",
-#'                 psu = "num",
-#'                 ssu = NULL,
-#'                 strata = NULL,
-#'                 weights = "weight",
-#'                 feature_selection = TRUE,
-#'                 bias_correction = FALSE)
-#' print(rf_proj)
-#' rf_proj$Domain1
-#' rf_proj$Domain2
-#'
 #' # Run projection_randomforest with bias correction
 #' rf_proj_corrected <- projection_randomforest(
 #'                 data_model = data_A,
