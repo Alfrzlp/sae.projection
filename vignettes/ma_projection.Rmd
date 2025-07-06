@@ -103,7 +103,7 @@ lgbm_result <- ma_projection(
   data_model = svy22_neet,
   data_proj = svy23_neet,
   cv_folds = 3,
-  tuning_grid = 10,
+  tuning_grid = 5,
   nest = TRUE
 )
 

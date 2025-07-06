@@ -159,7 +159,7 @@ lgbm_proj <- ma_projection(
   data_model = df_svy22_neet,
   data_proj = df_svy23_neet,
   cv_folds = 3,
-  tuning_grid = 10,
+  tuning_grid = 5,
   nest = TRUE
 )
 }

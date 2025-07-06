@@ -104,7 +104,7 @@
 #'                             domain1 = "province",
 #'                             domain2 = "regency",
 #'                             weight = "weight",
-#'                             nfold = 10,
+#'                             nfold = 5,
 #'                             test_size = 0.2 ,
 #'                             task_type = "classification",
 #'                             corrected_bias = TRUE,
