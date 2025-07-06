@@ -124,7 +124,7 @@ hasil <- projection_xgboost(
                             domain1 = "province",
                             domain2 = "regency",
                             weight = "weight",
-                            nfold = 5,
+                            nfold = 3,
                             test_size = 0.2 ,
                             task_type = "classification",
                             corrected_bias = TRUE,

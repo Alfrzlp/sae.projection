@@ -634,7 +634,7 @@ projection_rf_CorrectedBias <- function(data_model, target_column, predictor_col
 #'                 weights = "weight",
 #'                 feature_selection = TRUE,
 #'                 bias_correction = TRUE)
-#' print(rf_proj_corrected)
+#'
 #' rf_proj_corrected$Direct
 #' rf_proj_corrected$Domain1_corrected_bias
 #' rf_proj_corrected$Domain2_corrected_bias
