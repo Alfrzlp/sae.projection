@@ -95,9 +95,10 @@
 #'   nest = TRUE
 #' )
 #'
-#'
-#' df_svy22_neet <- df_svy22 %>% filter(between(age, 15, 24))
-#' df_svy23_neet <- df_svy23 %>% filter(between(age, 15, 24))
+#' df_svy22_neet <- df_svy22 %>%
+#'      filter(between(age, 15, 24))
+#' df_svy23_neet <- df_svy23 %>%
+#'      filter(between(age, 15, 24))
 #'
 #' # LightGBM regression with hyperparameter tunning
 #' show_engines("boost_tree")
@@ -117,7 +118,7 @@
 #'   data_model = df_svy22_neet,
 #'   data_proj = df_svy23_neet,
 #'   cv_folds = 3,
-#'   tuning_grid = 3,
+#'   tuning_grid = 5,
 #'   nest = TRUE
 #' )
 #' }
